@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "./firebase"; // adjust path
 
+// TODO: Double Check to see if this fetches all space data from the database
 export default function FirestoreTest() {
   const [spaces, setSpaces] = useState([]);
   const [error, setError] = useState("");
