@@ -42,7 +42,6 @@ export function SpaceCard({ space }) {
             </div>
           ) : (
             <div className="rating-badge no-rating">
-              <span className="rating-icon">📊</span>
               <div className="rating-text-group">
                 <span className="rating-label">No recent ratings</span>
                 <span className="rating-hint">Be the first to rate!</span>
@@ -54,9 +53,7 @@ export function SpaceCard({ space }) {
         <div className={`occupancy-indicators ${avg ? "" : "no-occupancy"}`}>
           {avg ? (
             Array.from({ length: Math.round(avg) }).map((_, i) => (
-              <span key={i} className="person-icon">
-                👤
-              </span>
+              <span key={i} className="occupancy-dot" aria-hidden="true" />
             ))
           ) : (
             <span className="occupancy-placeholder">No occupancy data available</span>

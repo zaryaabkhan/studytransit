@@ -19,16 +19,17 @@ export function useSpaceRecommendations(preferences) {
       avgBySpace.set(r.spaceId, entry);
     });
 
+    // Include ALL spaces: use real avg when rated, else default 3 (moderate) so Discover works for new users
     return spaces
       .map((space) => {
         const entry = avgBySpace.get(space.id);
-        if (!entry || !entry.count) return null;
-        const avg = Math.round((entry.sum / entry.count) * 100) / 100;
+        const avg = entry?.count
+          ? Math.round((entry.sum / entry.count) * 100) / 100
+          : 3;
         const score = computeScore(space, avg, normPrefs);
-        const reason = buildReason(space, avg, normPrefs, libraries);
+        const reason = buildReason(space, avg, normPrefs, libraries, !entry?.count);
         return { space, score, reason };
       })
-      .filter(Boolean)
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
   }, [spaces, libraries, ratings, normPrefs]);
@@ -64,9 +65,9 @@ function normalizePreferences(prefs) {
     }
   }
 
-  if (!parsed.noise && !parsed.intensity && !parsed.groupSize && !parsed.durationMinutes) {
-    return null;
-  }
+  // Always return prefs when we have at least one meaningful value
+  const hasAny = parsed.noise || parsed.intensity || (parsed.groupSize && parsed.groupSize > 0) || (parsed.durationMinutes && parsed.durationMinutes > 0);
+  if (!hasAny) return null;
 
   const group = parsed.groupSize || 1;
   parsed.groupSize = Math.min(Math.max(group, 1), 6);
@@ -110,7 +111,7 @@ function computeScore(space, avg, prefs) {
   return baseScore + noiseBonus + durationBonus + capacityBonus;
 }
 
-function buildReason(space, avg, prefs, libraries) {
+function buildReason(space, avg, prefs, libraries, isUnrated) {
   const { intensity, noise, groupSize, durationMinutes } = prefs;
   const library = libraries.find((l) => l.id === space.libraryId);
 
@@ -119,9 +120,15 @@ function buildReason(space, avg, prefs, libraries) {
   else if (intensity === "social") intensityPhrase = "collaborative or group work";
 
   let occupancyPhrase;
-  if (avg <= 2) occupancyPhrase = "usually pretty open right now";
-  else if (avg <= 3.5) occupancyPhrase = "moderately busy with room to concentrate";
-  else occupancyPhrase = "on the fuller side but with good energy";
+  if (isUnrated) {
+    occupancyPhrase = "a solid option (no occupancy data yet—be the first to rate!)";
+  } else if (avg <= 2) {
+    occupancyPhrase = "usually pretty open right now";
+  } else if (avg <= 3.5) {
+    occupancyPhrase = "moderately busy with room to concentrate";
+  } else {
+    occupancyPhrase = "on the fuller side but with good energy";
+  }
 
   let noisePhrase = "balanced for most study styles";
   if (noise === "silent") noisePhrase = "suited to very quiet sessions";
@@ -136,6 +143,7 @@ function buildReason(space, avg, prefs, libraries) {
   if (groupSize >= 2 && groupSize <= 3) groupPhrase = "small group work";
   else if (groupSize > 3) groupPhrase = "larger groups";
 
-  return `${library?.name ?? "Library"} – ${space.name} is ${occupancyPhrase} (avg ${avg}/5), ${noisePhrase}, and works well for ${intensityPhrase} as a ${durationPhrase} for ${groupPhrase}.`;
+  const avgPart = isUnrated ? "" : ` (avg ${avg}/5)`;
+  return `${library?.name ?? "Library"} – ${space.name} is ${occupancyPhrase}${avgPart}, ${noisePhrase}, and works well for ${intensityPhrase} as a ${durationPhrase} for ${groupPhrase}.`;
 }
 

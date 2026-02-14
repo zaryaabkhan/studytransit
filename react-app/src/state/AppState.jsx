@@ -114,6 +114,27 @@ function reducer(state, action) {
     case "SET_WEEKLY_GOAL": {
       return { ...state, weeklyGoalMinutes: action.payload };
     }
+    case "SEED_DEMO_DATA": {
+      const now = new Date();
+      const demoRatings = [
+        { id: "demo-r1", spaceId: "s3", value: 2, createdAt: new Date(now.getTime() - 3600000).toISOString() },
+        { id: "demo-r2", spaceId: "s12", value: 3, createdAt: new Date(now.getTime() - 7200000).toISOString() },
+        { id: "demo-r3", spaceId: "s18", value: 2, createdAt: new Date(now.getTime() - 10800000).toISOString() },
+        { id: "demo-r4", spaceId: "s9", value: 4, createdAt: new Date(now.getTime() - 14400000).toISOString() },
+      ];
+      const weekAgo = new Date(now);
+      weekAgo.setDate(weekAgo.getDate() - 5);
+      const demoSessions = [
+        { id: "demo-s1", started_at: weekAgo.toISOString(), duration_minutes: 45, task: "exam", energy: "ok", completed: true, finished_at: new Date(weekAgo.getTime() + 45 * 60000).toISOString() },
+        { id: "demo-s2", started_at: new Date(weekAgo.getTime() + 86400000).toISOString(), duration_minutes: 60, task: "reading", energy: "energized", completed: true, finished_at: new Date(weekAgo.getTime() + 86400000 + 60 * 60000).toISOString() },
+        { id: "demo-s3", started_at: new Date(weekAgo.getTime() + 172800000).toISOString(), duration_minutes: 30, task: "writing", energy: "tired", completed: true, finished_at: new Date(weekAgo.getTime() + 172800000 + 30 * 60000).toISOString() },
+      ];
+      return {
+        ...state,
+        ratings: [...state.ratings, ...demoRatings],
+        focusSessions: [...state.focusSessions, ...demoSessions].slice(-200),
+      };
+    }
     default:
       return state;
   }
