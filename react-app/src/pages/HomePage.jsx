@@ -1,125 +1,134 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppState } from "../state/AppState.jsx";
 
 export function HomePage() {
-  const {
-    state: { libraries, exams },
-    dispatch,
-  } = useAppState();
+  const { state: { libraries, spaces, ratings }, dispatch } = useAppState();
+  const [ratingModal, setRatingModal] = useState(null); // { libraryId } when open
+  const [ratingSpaceId, setRatingSpaceId] = useState(null);
+  const [ratingValue, setRatingValue] = useState(3);
 
-  const [showAddExam, setShowAddExam] = useState(false);
-  const [examName, setExamName] = useState("");
-  const [examDate, setExamDate] = useState("");
+  const libraryStats = useMemo(() => {
+    const map = new Map();
+    libraries.forEach((lib) => {
+      const libSpaces = spaces.filter((s) => s.libraryId === lib.id);
+      const libRatings = ratings.filter((r) => libSpaces.some((s) => s.id === r.spaceId));
+      const count = libRatings.length;
+      const avg = count
+        ? Math.round((libRatings.reduce((sum, r) => sum + Number(r.value || 0), 0) / count) * 100) / 100
+        : null;
+      map.set(lib.id, { avg, count });
+    });
+    return map;
+  }, [libraries, spaces, ratings]);
 
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const upcomingExams = exams.filter((e) => new Date(e.date) >= now).slice(0, 3);
-
-  function addExam(e) {
+  function openRateModal(libraryId, e) {
     e.preventDefault();
-    const d = new Date(examDate);
-    if (examName.trim() && !isNaN(d.getTime())) {
-      dispatch({ type: "ADD_EXAM", payload: { name: examName.trim(), date: d.toISOString().slice(0, 10) } });
-      setExamName("");
-      setExamDate("");
-      setShowAddExam(false);
-    }
+    e.stopPropagation();
+    setRatingModal(libraryId);
+    setRatingSpaceId(null);
+    setRatingValue(3);
   }
 
-  function removeExam(id) {
-    dispatch({ type: "REMOVE_EXAM", payload: id });
+  function closeRateModal() {
+    setRatingModal(null);
+    setRatingSpaceId(null);
   }
 
-  function daysUntil(dateStr) {
-    const d = new Date(dateStr);
-    d.setHours(0, 0, 0, 0);
-    return Math.ceil((d - now) / (24 * 60 * 60 * 1000));
+  function submitLibraryRating(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!ratingSpaceId || !ratingModal) return;
+    dispatch({
+      type: "ADD_RATING",
+      payload: { spaceId: ratingSpaceId, value: Number(ratingValue), timestamp: new Date().toISOString() },
+    });
+    closeRateModal();
   }
 
-  function suggestedMinutes(days) {
-    if (days <= 0) return 0;
-    if (days <= 7) return 90;
-    if (days <= 14) return 60;
-    return 45;
-  }
+  const modalLibrary = ratingModal ? libraries.find((l) => l.id === ratingModal) : null;
+  const modalSpaces = modalLibrary ? spaces.filter((s) => s.libraryId === ratingModal) : [];
 
   return (
     <>
       <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">Lion Study</h1>
-          <p className="app-tagline">Columbia Libraries · Find your spot</p>
+          <h1 className="app-title">StudyTransit</h1>
+          <p className="app-tagline">Find your flow · Campus study spaces</p>
         </div>
       </header>
       <main className="library-list">
-        {upcomingExams.length > 0 && (
-          <section className="exam-countdown-section">
-            <h2 className="exam-countdown-title">Upcoming exams</h2>
-            {upcomingExams.map((exam) => {
-              const days = daysUntil(exam.date);
-              const suggested = suggestedMinutes(days);
-              return (
-                <div key={exam.id} className="exam-countdown-card">
-                  <div className="exam-countdown-main">
-                    <span className="exam-countdown-name">{exam.name}</span>
-                    <span className="exam-countdown-days">{days} {days === 1 ? "day" : "days"} left</span>
+        <div className="library-list-header">
+          <h2 className="library-list-title">Libraries</h2>
+        </div>
+        {libraries.map((library) => {
+          const stats = libraryStats.get(library.id) || { avg: null, count: 0 };
+          return (
+            <div key={library.id} className="library-card-wrapper">
+              <Link to={`/libraries/${library.id}`} className="library-card">
+                <div className="library-card-main">
+                  <div className="library-name">{library.name}</div>
+                  {library.location && <div className="library-location">{library.location}</div>}
+                  <div className="library-stats-row">
+                    <span className="library-stat">
+                      {stats.count > 0 ? (
+                        <>Avg {stats.avg}/5 · {stats.count} rating{stats.count === 1 ? "" : "s"}</>
+                      ) : (
+                        <span className="library-stat-empty">No ratings yet</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      className="library-rate-btn"
+                      onClick={(e) => openRateModal(library.id, e)}
+                      aria-label="Rate this library"
+                    >
+                      Rate
+                    </button>
                   </div>
-                  <p className="exam-countdown-tip">Aim for ~{suggested} min this week (spaced practice)</p>
-                  <button type="button" className="exam-countdown-remove" onClick={() => removeExam(exam.id)} aria-label="Remove">×</button>
                 </div>
-              );
-            })}
-            <button type="button" className="exam-countdown-add" onClick={() => setShowAddExam(true)}>
-              + Add exam date
-            </button>
-          </section>
-        )}
-
-        {showAddExam && (
-          <div className="exam-add-modal">
-            <div className="exam-add-backdrop" onClick={() => setShowAddExam(false)} />
-            <div className="exam-add-dialog">
-              <h2 className="exam-add-title">Add exam</h2>
-              <form onSubmit={addExam} className="exam-add-form">
-                <input
-                  type="text"
-                  placeholder="Exam name (e.g. CS midterm)"
-                  value={examName}
-                  onChange={(e) => setExamName(e.target.value)}
-                  className="exam-add-input"
-                  autoFocus
-                />
-                <input
-                  type="date"
-                  value={examDate}
-                  onChange={(e) => setExamDate(e.target.value)}
-                  className="exam-add-input"
-                  required
-                />
-                <div className="exam-add-actions">
-                  <button type="submit" className="primary-button">Add</button>
-                  <button type="button" className="muted-button" onClick={() => setShowAddExam(false)}>Cancel</button>
-                </div>
-              </form>
+              </Link>
             </div>
-          </div>
-        )}
-
-        {upcomingExams.length === 0 && (
-          <button type="button" className="exam-countdown-cta" onClick={() => setShowAddExam(true)}>
-            Add an exam to get study reminders
-          </button>
-        )}
-
-        <h2 className="library-list-title">Libraries</h2>
-        {libraries.map((library) => (
-          <Link key={library.id} to={`/libraries/${library.id}`} className="library-card">
-            <div className="library-name">{library.name}</div>
-            {library.location && <div className="library-location">{library.location}</div>}
-          </Link>
-        ))}
+          );
+        })}
       </main>
+
+      {ratingModal && (
+        <div className="library-rate-modal">
+          <div className="library-rate-backdrop" onClick={closeRateModal} />
+          <div className="library-rate-dialog">
+            <h2 className="library-rate-title">Rate a space at {modalLibrary?.name}</h2>
+            <form onSubmit={submitLibraryRating} className="library-rate-form">
+              <label className="library-rate-label">Which space are you in?</label>
+              <select
+                className="library-rate-select"
+                value={ratingSpaceId || ""}
+                onChange={(e) => setRatingSpaceId(e.target.value || null)}
+                required
+              >
+                <option value="">Select a space</option>
+                {modalSpaces.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <label className="library-rate-label">How full is it? {ratingValue}/5</label>
+              <input
+                type="range"
+                min={1}
+                max={5}
+                step={1}
+                value={ratingValue}
+                onChange={(e) => setRatingValue(Number(e.target.value))}
+                className="library-rate-slider"
+              />
+              <div className="library-rate-actions">
+                <button type="submit" className="primary-button">Submit rating</button>
+                <button type="button" className="muted-button" onClick={closeRateModal}>Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </>
   );
 }

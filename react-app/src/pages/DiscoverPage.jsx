@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAppState } from "../state/AppState.jsx";
 import { useSpaceRecommendations } from "../hooks/useRecommender.js";
+import { getAISpaceRecommendations } from "../services/aiClient.js";
 
 export function DiscoverPage() {
   const [form, setForm] = useState({
@@ -10,6 +12,9 @@ export function DiscoverPage() {
     duration: 60,
     q: "",
   });
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const {
     state: { spaces, libraries, ratings },
@@ -53,6 +58,30 @@ export function DiscoverPage() {
   function handleSubmit(e) {
     e.preventDefault();
     // Recommendations recompute automatically via hook.
+  }
+
+  const aiResultsRef = React.useRef(null);
+
+  async function handleAISuggestions() {
+    setAiLoading(true);
+    setAiError("");
+    setAiSuggestions([]);
+    try {
+      const prefs = {
+        intensity: form.intensity,
+        noise: form.noise,
+        groupSize: Number(form.groupSize) || 1,
+        duration: Number(form.duration) || 60,
+        query: form.q.trim(),
+      };
+      const results = await getAISpaceRecommendations(prefs, spaces, libraries);
+      setAiSuggestions(Array.isArray(results) ? results : []);
+      setTimeout(() => aiResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+    } catch (err) {
+      setAiError(err.message || "Could not get AI suggestions.");
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   return (
@@ -208,11 +237,38 @@ export function DiscoverPage() {
               <button type="submit" className="primary-button">
                 Find me a spot
               </button>
+              <button
+                type="button"
+                className="primary-outline-button discover-ai-btn"
+                onClick={handleAISuggestions}
+                disabled={aiLoading}
+              >
+                {aiLoading ? "Asking AI..." : "Get AI suggestions"}
+              </button>
             </div>
           </form>
         </section>
 
         <section className="discover-results">
+          {aiSuggestions.length > 0 && (
+            <div ref={aiResultsRef} className="discover-ai-section discover-ai-section-first">
+              <h2 className="discover-results-title">AI recommendations</h2>
+              <ul className="discover-result-list">
+                {aiSuggestions.map((item, idx) => (
+                  <li key={idx} className="discover-result-card ai-card">
+                    <div className="discover-result-header">
+                      <div className="discover-result-title">
+                        <div className="discover-room-name">{item.space}</div>
+                        <div className="discover-library-name">{item.library}</div>
+                      </div>
+                    </div>
+                    <p className="discover-reason">{item.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {aiError && <p className="discover-ai-error">{aiError}</p>}
           {recommendations.length ? (
             <>
               <h2 className="discover-results-title">Top matches right now</h2>
@@ -224,6 +280,7 @@ export function DiscoverPage() {
                   const library = libraries.find((l) => l.id === rec.space.libraryId);
                   return (
                     <li key={rec.space.id} className="discover-result-card">
+                      <Link to={`/libraries/${rec.space.libraryId}`} className="discover-result-link">
                       <div className="discover-result-header">
                         <div className="discover-result-title">
                           <div className="discover-room-name">{rec.space.name}</div>
@@ -236,7 +293,6 @@ export function DiscoverPage() {
                           </div>
                         ) : (
                           <div className="rating-badge no-rating">
-                            <span className="rating-icon">📊</span>
                             <div className="rating-text-group">
                               <span className="rating-label">No recent ratings</span>
                               <span className="rating-hint">
@@ -252,6 +308,7 @@ export function DiscoverPage() {
                           Updated {new Date(last.createdAt).toLocaleTimeString()}
                         </div>
                       )}
+                      </Link>
                     </li>
                   );
                 })}

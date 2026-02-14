@@ -1,0 +1,16 @@
+/* StudyTransit — Single theme (teal/amber)
+   Colors chosen for WCAG AA contrast */
+
+:root {
+  --primary: #0d5c56;
+  --primary-light: #0f766e;
+  --primary-dark: #094943;
+  --accent: #b45309;
+  --accent-light: #d97706;
+  --surface: #ffffff;
+  --surface-warm: #f8fafc;
+  --ink: #0f172a;
+  --ink-muted: #475569;
+  --primary-rgb: 13, 92, 86;
+  --accent-rgb: 180, 83, 9;
+}

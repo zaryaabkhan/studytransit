@@ -4,7 +4,7 @@ import { getWeeklyStudyInsights } from "../services/aiClient.js";
 
 export function StatsPage() {
   const {
-    state: { focusSessions, weeklyGoalMinutes },
+    state: { focusSessions, weeklyGoalMinutes, exams },
     dispatch,
   } = useAppState();
 
@@ -12,6 +12,9 @@ export function StatsPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
   const [goalInput, setGoalInput] = useState("");
+  const [showAddExam, setShowAddExam] = useState(false);
+  const [examName, setExamName] = useState("");
+  const [examDate, setExamDate] = useState("");
 
   const { weeklyMinutes, completedSessions, recentCompleted, studyStreak } = useMemo(() => {
     const now = new Date();
@@ -154,6 +157,34 @@ export function StatsPage() {
 
   const goalProgress = Math.min(100, Math.round((weeklyMinutes / weeklyGoalMinutes) * 100));
 
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const upcomingExams = exams.filter((e) => new Date(e.date) >= now).slice(0, 5);
+
+  function daysUntil(dateStr) {
+    const d = new Date(dateStr);
+    d.setHours(0, 0, 0, 0);
+    return Math.ceil((d - now) / (24 * 60 * 60 * 1000));
+  }
+
+  function suggestedMinutes(days) {
+    if (days <= 0) return 0;
+    if (days <= 7) return 90;
+    if (days <= 14) return 60;
+    return 45;
+  }
+
+  function addExam(e) {
+    e.preventDefault();
+    const d = new Date(examDate);
+    if (examName.trim() && !isNaN(d.getTime())) {
+      dispatch({ type: "ADD_EXAM", payload: { name: examName.trim(), date: d.toISOString().slice(0, 10) } });
+      setExamName("");
+      setExamDate("");
+      setShowAddExam(false);
+    }
+  }
+
   function setGoal(e) {
     e.preventDefault();
     const val = parseInt(goalInput, 10);
@@ -190,11 +221,72 @@ export function StatsPage() {
     <>
       <header className="app-header">
         <div className="header-content">
-          <h1 className="app-title">Lion Study</h1>
+          <h1 className="app-title">Stats</h1>
           <p className="app-tagline">Your study dashboard</p>
         </div>
       </header>
       <main className="stats-main">
+        <section className="stats-section stats-exams-section">
+          <h2 className="stats-section-title">Upcoming exams</h2>
+          {upcomingExams.length > 0 ? (
+            <>
+              <ul className="stats-exam-list">
+                {upcomingExams.map((exam) => {
+                  const days = daysUntil(exam.date);
+                  const suggested = suggestedMinutes(days);
+                  return (
+                    <li key={exam.id} className="stats-exam-item">
+                      <div className="stats-exam-main">
+                        <span className="stats-exam-name">{exam.name}</span>
+                        <span className="stats-exam-days">{days} {days === 1 ? "day" : "days"} left</span>
+                      </div>
+                      <p className="stats-exam-tip">Aim for ~{suggested} min this week (spaced practice)</p>
+                      <button type="button" className="stats-exam-remove" onClick={() => dispatch({ type: "REMOVE_EXAM", payload: exam.id })} aria-label="Remove">×</button>
+                    </li>
+                  );
+                })}
+              </ul>
+              <button type="button" className="primary-outline-button stats-exam-add" onClick={() => setShowAddExam(true)}>
+                Add exam
+              </button>
+            </>
+          ) : (
+            <button type="button" className="muted-button stats-exam-add" onClick={() => setShowAddExam(true)}>
+              Add an exam to get study reminders
+            </button>
+          )}
+        </section>
+
+        {showAddExam && (
+          <div className="exam-add-modal">
+            <div className="exam-add-backdrop" onClick={() => setShowAddExam(false)} />
+            <div className="exam-add-dialog">
+              <h2 className="exam-add-title">Add exam</h2>
+              <form onSubmit={addExam} className="exam-add-form">
+                <input
+                  type="text"
+                  placeholder="Exam name (e.g. CS midterm)"
+                  value={examName}
+                  onChange={(e) => setExamName(e.target.value)}
+                  className="exam-add-input"
+                  autoFocus
+                />
+                <input
+                  type="date"
+                  value={examDate}
+                  onChange={(e) => setExamDate(e.target.value)}
+                  className="exam-add-input"
+                  required
+                />
+                <div className="exam-add-actions">
+                  <button type="submit" className="primary-button">Add</button>
+                  <button type="button" className="muted-button" onClick={() => setShowAddExam(false)}>Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
         <section className="stats-summary">
           <div className="stats-card stats-card-highlight">
             <div className="stats-label">Study streak</div>
@@ -259,6 +351,15 @@ export function StatsPage() {
         </section>
 
         <section className="stats-section">
+          {recentCompleted.length === 0 && (
+            <button
+              type="button"
+              className="muted-button stats-demo-btn"
+              onClick={() => dispatch({ type: "SEED_DEMO_DATA" })}
+            >
+              Load demo data (for judges)
+            </button>
+          )}
           <h2 className="stats-section-title">AI study coach</h2>
           <ul className="stats-list">
             {coachingTips.length === 0 ? (

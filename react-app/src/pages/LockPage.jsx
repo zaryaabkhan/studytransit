@@ -8,13 +8,12 @@ export function LockPage() {
     dispatch,
   } = useAppState();
 
-  const [duration, setDuration] = useState(60);
+  const [duration, setDuration] = useState(10);
   const [remaining, setRemaining] = useState(duration * 60);
   const [timerState, setTimerState] = useState("idle"); // idle | running | completed
   const [taskType, setTaskType] = useState("");
   const [energy, setEnergy] = useState("");
 
-  const [surveyOpen, setSurveyOpen] = useState(false);
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [rating, setRating] = useState(3);
   const [feedback, setFeedback] = useState({ message: "", status: null });
@@ -23,19 +22,48 @@ export function LockPage() {
   const [coachError, setCoachError] = useState("");
   const [reflectionFocus, setReflectionFocus] = useState(3);
   const [reflectionNote, setReflectionNote] = useState("");
+  const [timerNotification, setTimerNotification] = useState("");
 
   const intervalRef = useRef(null);
+  const notificationIntervalRef = useRef(null);
   const sessionRef = useRef(null);
 
   useEffect(() => {
     setRemaining(duration * 60);
   }, [duration]);
 
+  const TIMER_MESSAGES = [
+    "You got it",
+    "Keep up the good work",
+    "Get to work",
+    "Stay focused",
+    "You're doing great",
+    "One step at a time",
+    "Almost there",
+    "Keep going",
+  ];
+
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (notificationIntervalRef.current) clearInterval(notificationIntervalRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (timerState !== "running") {
+      setTimerNotification("");
+      return;
+    }
+    const pickMessage = () => TIMER_MESSAGES[Math.floor(Math.random() * TIMER_MESSAGES.length)];
+    setTimerNotification(pickMessage());
+    notificationIntervalRef.current = setInterval(() => {
+      setTimerNotification(pickMessage());
+    }, 90 * 1000); // every 90 seconds
+    return () => {
+      if (notificationIntervalRef.current) clearInterval(notificationIntervalRef.current);
+    };
+  }, [timerState]);
 
   function configureSession() {
     const now = new Date();
@@ -119,7 +147,13 @@ export function LockPage() {
 
   function startTimer() {
     if (timerState === "running") return;
+    if (!selectedSpaceId) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
+
+    dispatch({
+      type: "ADD_RATING",
+      payload: { spaceId: selectedSpaceId, value: Number(rating), timestamp: new Date().toISOString() },
+    });
 
     setTimerState("running");
     setRemaining(duration * 60);
@@ -147,30 +181,6 @@ export function LockPage() {
     setRemaining(duration * 60);
     completeSession(false);
     setFeedback({ message: "", status: null });
-  }
-
-  function openSurvey() {
-    setSurveyOpen(true);
-  }
-
-  function closeSurvey() {
-    setSurveyOpen(false);
-  }
-
-  function submitRating() {
-    if (!selectedSpaceId) {
-      setFeedback({ message: "Please choose a room before rating.", status: "error" });
-      return;
-    }
-    dispatch({
-      type: "ADD_RATING",
-      payload: { spaceId: selectedSpaceId, value: Number(rating), timestamp: new Date().toISOString() },
-    });
-    setFeedback({
-      message: "Thanks for the update! The room rating has been refreshed.",
-      status: "success",
-    });
-    closeSurvey();
   }
 
   async function askCoach() {
@@ -217,9 +227,11 @@ export function LockPage() {
 
   return (
     <div className="lock-screen">
-      <header className="lock-header">
-        <div className="lock-badge">Focus Mode</div>
-        <div className="lock-subtitle">Lock in · Columbia study sessions</div>
+      <header className="app-header lock-header-same">
+        <div className="header-content">
+          <h1 className="app-title">Lock In</h1>
+          <p className="app-tagline">Focus mode · Stay present</p>
+        </div>
       </header>
 
       <main className="lock-main">
@@ -251,9 +263,9 @@ export function LockPage() {
               <input
                 id="duration-range"
                 type="range"
-                min={15}
+                min={5}
                 max={180}
-                step={15}
+                step={5}
                 value={duration}
                 disabled={timerState === "running"}
                 onChange={(e) => setDuration(Number(e.target.value))}
@@ -296,10 +308,51 @@ export function LockPage() {
                 </select>
               </div>
             </div>
+
+            <div className="lock-room-rating-section">
+              <label className="timer-label">Rate the room you&apos;re in</label>
+              <div className="lock-room-row">
+                <select
+                  className="lock-context-select lock-room-select"
+                  value={selectedSpaceId || ""}
+                  onChange={(e) => setSelectedSpaceId(e.target.value || null)}
+                >
+                  <option value="">Select your space</option>
+                  {libraries.map((lib) => {
+                    const libSpaces = sortedSpaces.filter((s) => s.libraryId === lib.id);
+                    if (!libSpaces.length) return null;
+                    return (
+                      <optgroup key={lib.id} label={lib.name}>
+                        {libSpaces.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+                <div className="lock-rating-inline">
+                  <span className="lock-rating-label">How full? {rating}/5</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={5}
+                    step={1}
+                    value={rating}
+                    onChange={(e) => setRating(Number(e.target.value))}
+                    className="lock-rating-slider"
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </section>
 
         <section className="lock-actions">
+          {timerNotification && timerState === "running" && (
+            <div className="lock-timer-notification" role="status">
+              {timerNotification}
+            </div>
+          )}
           {feedback.message && (
             <div className="survey-callout is-visible" data-status={feedback.status || ""}>
               {feedback.message}
@@ -309,10 +362,15 @@ export function LockPage() {
             className="primary-button"
             type="button"
             onClick={startTimer}
-            disabled={timerState === "running"}
+            disabled={timerState === "running" || !taskType || !energy || !selectedSpaceId}
           >
             {timerState === "completed" ? "Session complete!" : "Turn On Focus Mode"}
           </button>
+          {(!taskType || !energy || !selectedSpaceId) && timerState === "idle" && (
+            <p className="lock-required-hint">
+              Select task, energy, and rate your room to start
+            </p>
+          )}
           <div className="button-separator">
             <span className="separator-line"></span>
             <span className="separator-text">OR</span>
@@ -320,9 +378,6 @@ export function LockPage() {
           </div>
           <button className="primary-outline-button" type="button" onClick={askCoach}>
             {coachLoading ? "Asking coach..." : "Ask AI study coach"}
-          </button>
-          <button className="primary-outline-button" type="button" onClick={openSurvey}>
-            Rate a Room&apos;s Capacity
           </button>
           {timerState === "running" && (
             <button className="muted-button" type="button" onClick={cancelTimer}>
@@ -388,69 +443,6 @@ export function LockPage() {
         </section>
       )}
 
-      {surveyOpen && (
-        <div className="survey-modal">
-          <div className="survey-backdrop" onClick={closeSurvey}></div>
-          <div className="survey-dialog">
-            <div className="survey-header">
-              <h2>Select the room you are in</h2>
-              <button type="button" className="survey-close" onClick={closeSurvey}>
-                &times;
-              </button>
-            </div>
-            <div className="survey-body">
-              <ul className="survey-room-list">
-                {sortedSpaces.map((space) => (
-                  <li
-                    key={space.id}
-                    className={
-                      "survey-room-item" + (selectedSpaceId === space.id ? " is-selected" : "")
-                    }
-                    onClick={() => setSelectedSpaceId(space.id)}
-                  >
-                    <span className="survey-room-name">{space.name}</span>
-                    <span className="survey-room-library">{space.libraryName}</span>
-                  </li>
-                ))}
-              </ul>
-              {selectedSpaceId && (
-                <div className="survey-rating">
-                  <div className="survey-selected-room">
-                    Rating for{" "}
-                    {sortedSpaces.find((s) => s.id === selectedSpaceId)?.name || "this room"}
-                  </div>
-                  <div className="survey-slider">
-                    <label htmlFor="rating-slider">
-                      How full is it? <span>{rating} / 5</span>
-                    </label>
-                    <input
-                      id="rating-slider"
-                      type="range"
-                      min={1}
-                      max={5}
-                      step={1}
-                      value={rating}
-                      onChange={(e) => setRating(Number(e.target.value))}
-                    />
-                    <div className="survey-slider-caption">
-                      <span>Empty</span>
-                      <span>Full</span>
-                    </div>
-                  </div>
-                  <div className="survey-slider-actions">
-                    <button type="button" className="primary-button" onClick={submitRating}>
-                      Submit
-                    </button>
-                    <button type="button" className="muted-button" onClick={closeSurvey}>
-                      Skip for now
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
