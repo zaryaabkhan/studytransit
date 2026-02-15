@@ -258,6 +258,12 @@ body,
   margin: 0.2rem 0 0;
 }
 
+.stats-exam-date {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  margin: 0.2rem 0 0;
+}
+
 .stats-exam-tip {
   font-size: 0.8rem;
   color: var(--ink-muted);
@@ -583,6 +589,12 @@ body,
   font-weight: 600;
   color: var(--ink);
   margin: 0.75rem 0 0.5rem;
+}
+
+.exam-detail-todo-meta {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  margin: -0.25rem 0 0.5rem;
 }
 
 .exam-detail-todos {

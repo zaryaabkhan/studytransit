@@ -330,6 +330,14 @@ export function StatsPage() {
                         {exam.type && (
                           <p className="stats-exam-type">{exam.type.charAt(0).toUpperCase() + exam.type.slice(1)}</p>
                         )}
+                        <p className="stats-exam-date">
+                          {new Date(exam.date).toLocaleDateString("en-US", {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                          })}
+                        </p>
                         <p className="stats-exam-tip">Aim for ~{suggested} min this week (spaced practice)</p>
                       </div>
                       <button type="button" className="stats-exam-remove" onClick={(e) => { e.stopPropagation(); dispatch({ type: "REMOVE_EXAM", payload: exam.id }); }} aria-label="Remove">×</button>
@@ -479,6 +487,15 @@ export function StatsPage() {
                 </button>
                 {examTip && <p className="exam-detail-tip-text">{examTip}</p>}
                 <h3 className="exam-detail-subtitle">Study to-do</h3>
+                <p className="exam-detail-todo-meta">
+                  {new Date(exam.date).toLocaleDateString("en-US", {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}{" "}
+                  · {daysUntil(exam.date)} {daysUntil(exam.date) === 1 ? "day" : "days"} left
+                </p>
                 <ul className="exam-detail-todos">
                   {topics.map((topic) => (
                     <li key={topic.id} className="exam-detail-todo-item">
