@@ -214,28 +214,33 @@ export async function getSessionCoachingSummary(session, context) {
 }
 
 export async function getAISpaceRecommendations(preferences, spaces, libraries) {
+  const rankedCandidates = rankSpacesForPreferences(preferences, spaces, libraries);
+  const candidatePool = rankedCandidates.slice(0, 12);
   const apiKey = getApiKey();
   if (apiKey && apiKey.length >= 10) {
     try {
-      const spaceList = spaces
-        .map((s) => {
-          const lib = libraries.find((l) => l.id === s.libraryId);
-          const cap = s.capacity != null ? `capacity ${s.capacity}` : "";
-          const extras = [cap, s.room_data?.space_type, s.room_data?.features]
+      const spaceList = candidatePool
+        .map(({ space, library, score }) => {
+          const capacity = Number(space.room_data?.space_capacity ?? space.capacity) || 0;
+          const counter = Number(space.room_data?.space_counter) || 0;
+          const occupancy = capacity > 0 ? Math.round((counter / capacity) * 100) : null;
+          const cap = capacity ? `capacity ${capacity}` : "";
+          const occ = occupancy != null ? `occupied ${occupancy}%` : "";
+          const extras = [cap, occ, space.room_data?.space_type, space.room_data?.features]
             .filter(Boolean)
             .join(", ");
-          return `${s.name} @ ${lib?.name ?? "Library"}${extras ? ` (${extras})` : ""}`;
+          return `${space.name} @ ${library?.name ?? "Library"}${extras ? ` (${extras})` : ""} [score ${score.toFixed(2)}]`;
         })
         .join("\n");
 
-      const content = `Student preferences:\n${JSON.stringify(preferences, null, 2)}\n\nAvailable spaces (name @ library, with details):\n${spaceList}\n\nNoise options: silent, busy, background buzz. Intensity: deep, steady, social.\n\nReturn 3-5 spaces as a JSON array: [{"space": "exact space name", "library": "exact library name", "reason": "One concrete sentence tailored to THIS specific space and library—mention the space type, library character, or layout. Not generic."}]`;
+      const content = `Student preferences:\n${JSON.stringify(preferences, null, 2)}\n\nTop candidate spaces (already pre-ranked for these preferences):\n${spaceList}\n\nNoise options: silent, busy, background buzz. Intensity: deep, steady, social.\n\nPick 3-5 spaces ONLY from the candidate list above, prioritizing highest matching candidates. Return a JSON array: [{"space": "exact space name", "library": "exact library name", "reason": "One concrete sentence tailored to THIS specific space and library—mention the space type, library character, or layout. Not generic."}]`;
 
       const result = await callChat(
         [
           {
             role: "system",
             content:
-              "You are a study space advisor for university students. Recommend 3-5 spaces that best match preferences. " +
+              "You are a study space advisor for university students. Recommend 3-5 spaces from the candidate list only. " +
               "For each space, write a personalized reason that references that specific room, library, and layout—e.g. 'Room 301 at Butler is a designated quiet room ideal for exam prep' or 'The Main Reading Room at Avery has natural light and suits steady reading.' Never give generic reasons. Return only valid JSON array.",
           },
           { role: "user", content },
@@ -246,7 +251,17 @@ export async function getAISpaceRecommendations(preferences, spaces, libraries) 
         try {
           const match = result.match(/\[[\s\S]*\]/);
           if (match) {
-            return JSON.parse(match[0]);
+            const parsed = JSON.parse(match[0]);
+            if (Array.isArray(parsed) && parsed.length) {
+              const valid = parsed
+                .filter((item) =>
+                  candidatePool.some(
+                    (c) => c.space.name === item.space && (c.library?.name ?? "Library") === item.library
+                  )
+                )
+                .slice(0, 5);
+              if (valid.length >= 3) return valid;
+            }
           }
         } catch {
           /* fall through to demo */
@@ -257,27 +272,74 @@ export async function getAISpaceRecommendations(preferences, spaces, libraries) 
     }
   }
 
-  // Demo: return rule-based matches with space-specific reasons
-  const { intensity = "steady", noise = "busy", query = "" } = preferences;
-  const q = (query || "").toLowerCase();
-  const filtered = spaces.filter((s) => {
-    const name = (s.name || "").toLowerCase();
-    if (q.match(/quiet|silent|focus/)) return name.includes("quiet") || name.includes("room");
-    if (q.match(/group|social|busy/)) return name.includes("group") || name.includes("main");
-    return true;
-  });
+  // Fallback: return deterministic top matches based on preferences.
+  const { intensity = "steady", noise = "busy" } = preferences;
   const noiseLabel = noise === "silent" ? "quiet focus" : noise === "buzz" ? "background buzz" : "busy productive vibe";
-  return filtered.slice(0, 5).map((s) => {
-    const lib = libraries.find((l) => l.id === s.libraryId);
-    const isQuiet = (s.name || "").toLowerCase().includes("quiet");
-    const isGroup = (s.name || "").toLowerCase().includes("group");
-    let reason = `${lib?.name ?? "Library"} – ${s.name}`;
+  return rankedCandidates.slice(0, 5).map(({ space, library }) => {
+    const isQuiet = (space.name || "").toLowerCase().includes("quiet");
+    const isGroup = (space.name || "").toLowerCase().includes("group");
+    let reason = `${library?.name ?? "Library"} – ${space.name}`;
     if (isQuiet) reason += " is a designated quiet space";
     else if (isGroup) reason += " works well for groups and collaboration";
     else reason += " offers a balanced study environment";
     reason += `, ideal for ${intensity} work with a ${noiseLabel}.`;
-    return { space: s.name, library: lib?.name ?? "Library", reason };
+    return { space: space.name, library: library?.name ?? "Library", reason };
   });
+}
+
+function rankSpacesForPreferences(preferences = {}, spaces = [], libraries = []) {
+  const {
+    intensity = "steady",
+    noise = "busy",
+    groupSize: rawGroupSize = 1,
+    duration: rawDuration = 60,
+    query = "",
+  } = preferences;
+  const groupSize = Math.max(1, Number(rawGroupSize) || 1);
+  const duration = Math.max(15, Number(rawDuration) || 60);
+  const normalizedQuery = String(query || "").trim().toLowerCase();
+
+  const intensityTarget =
+    intensity === "deep" ? 0.22 : intensity === "social" ? 0.72 : 0.48;
+  const noiseTarget =
+    noise === "silent" ? 0.2 : noise === "buzz" ? 0.7 : 0.52;
+  const durationTargetShift = duration >= 90 ? -0.08 : 0;
+
+  return (spaces || [])
+    .map((space) => {
+      const library = libraries.find((l) => l.id === space.libraryId) || null;
+      const roomData = space.room_data || {};
+      const capacity = Number(roomData.space_capacity ?? space.capacity) || 0;
+      const counter = Number(roomData.space_counter) || 0;
+      const occupancy = Math.min(capacity / counter , 1.5);
+      const occupancyFit = 1 - Math.abs(occupancy - (intensityTarget + durationTargetShift));
+      const noiseFit = 1 - Math.abs(occupancy - noiseTarget);
+      const groupFit =
+        capacity > 0 ? Math.min(capacity / Math.max(groupSize, 1), 2) / 2 : 0;
+
+      const searchable = [
+        space.name,
+        library?.name,
+        roomData.space_type,
+        roomData.features,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const queryBonus = normalizedQuery
+        ? normalizedQuery
+            .split(/\s+/)
+            .filter(Boolean)
+            .reduce((acc, token) => (searchable.includes(token) ? acc + 0.2 : acc), 0)
+        : 0;
+
+      const score =
+        occupancyFit  + noiseFit  + groupFit  + queryBonus;
+
+      return { space, library, score };
+    })
+    .sort((a, b) => b.score - a.score);
 }
 
 export async function getWeeklyStudyInsights(summary) {

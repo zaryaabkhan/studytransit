@@ -313,7 +313,7 @@ export function LockPage() {
                   value={energy}
                   onChange={(e) => setEnergy(e.target.value)}
                 >
-                  <option value="">Energy check</option>
+                  <option value="">Select mood</option>
                   <option value="tired">Pretty tired</option>
                   <option value="ok">Okay</option>
                   <option value="energized">Energized</option>
