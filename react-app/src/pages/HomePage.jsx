@@ -137,7 +137,7 @@ export function HomePage() {
       <header className="app-header">
         <div className="header-content">
           <h1 className="app-title">StudyTransit</h1>
-          <p className="app-tagline">Find your flow · Campus study spaces</p>
+          <p className="app-tagline">Skip the hunt. Find your spot and start studying.</p>
         </div>
       </header>
       <main className="library-list">
@@ -163,9 +163,6 @@ export function HomePage() {
           </article>
         </section>
 
-        <div className="library-list-header">
-          <h2 className="library-list-title">Libraries</h2>
-        </div>
         {libraries.length === 0 && (
           <p className="library-stat-empty" style={{ padding: 24 }}>Loading libraries…</p>
         )}

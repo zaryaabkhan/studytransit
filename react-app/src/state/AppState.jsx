@@ -1,5 +1,51 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
-import { fetchAllLibraries, fetchAllSpacesFromLibrary } from "../firebase/firebase_utility.jsx";
+import { fetchAllLibraries , fetchAllSpacesFromLibrary} from "../firebase/firebase_utility.jsx";
+
+// All Columbia University libraries and study spaces (from library.columbia.edu)
+const initialLibraries = [
+  { id: "lib-1", name: "Butler Library", location: "535 W 114th St" },
+  { id: "lib-2", name: "Avery Architectural & Fine Arts", location: "Avery Hall" },
+  { id: "lib-3", name: "Business & Economics (Uris)", location: "Uris Hall" },
+  { id: "lib-4", name: "Lehman Social Sciences", location: "International Affairs" },
+  { id: "lib-5", name: "Science & Engineering", location: "Northwest Corner Building" },
+  { id: "lib-6", name: "Starr East Asian Library", location: "Kent Hall" },
+  { id: "lib-7", name: "Music & Arts Library", location: "Dodge Hall" },
+  { id: "lib-8", name: "Burke Library", location: "3041 Broadway (UTS)" },
+  { id: "lib-9", name: "Social Work Library", location: "School of Social Work" },
+  { id: "lib-10", name: "Barnard Milstein Center", location: "Barnard College" },
+];
+
+const initialSpaces = [
+  { id: "s1", libraryId: "lib-1", name: "Main Reading Room", capacity: 4 },
+  { id: "s2", libraryId: "lib-1", name: "Floors 2–4 (24/7)", capacity: 4 },
+  { id: "s3", libraryId: "lib-1", name: "Room 301 (Quiet)", capacity: 2 },
+  { id: "s4", libraryId: "lib-1", name: "Rooms 502–504", capacity: 2 },
+  { id: "s5", libraryId: "lib-1", name: "Rooms 601–607", capacity: 2 },
+  { id: "s6", libraryId: "lib-1", name: "Stacks", capacity: 3 },
+  { id: "s7", libraryId: "lib-1", name: "Rooms 202, 209 (Group)", capacity: 4 },
+  { id: "s8", libraryId: "lib-1", name: "Rooms 403A–409A (Group)", capacity: 5 },
+  { id: "s9", libraryId: "lib-2", name: "Main Reading Room", capacity: 3 },
+  { id: "s10", libraryId: "lib-2", name: "Quiet Study Area", capacity: 2 },
+  { id: "s11", libraryId: "lib-3", name: "Floors 1–2 (Group)", capacity: 4 },
+  { id: "s12", libraryId: "lib-3", name: "3rd Floor (Quiet)", capacity: 3 },
+  { id: "s13", libraryId: "lib-3", name: "Study Rooms", capacity: 5 },
+  { id: "s14", libraryId: "lib-4", name: "Room 329A", capacity: 3 },
+  { id: "s15", libraryId: "lib-4", name: "Main Floor", capacity: 4 },
+  { id: "s16", libraryId: "lib-4", name: "Group Study", capacity: 5 },
+  { id: "s17", libraryId: "lib-5", name: "400 Level", capacity: 4 },
+  { id: "s18", libraryId: "lib-5", name: "Quiet Study", capacity: 3 },
+  { id: "s19", libraryId: "lib-5", name: "Lab Space", capacity: 4 },
+  { id: "s20", libraryId: "lib-6", name: "Main Reading Room", capacity: 3 },
+  { id: "s21", libraryId: "lib-6", name: "Quiet Study", capacity: 2 },
+  { id: "s22", libraryId: "lib-7", name: "Main Floor", capacity: 3 },
+  { id: "s23", libraryId: "lib-7", name: "Listening Room", capacity: 2 },
+  { id: "s24", libraryId: "lib-8", name: "Main Reading Room", capacity: 3 },
+  { id: "s25", libraryId: "lib-8", name: "Quiet Study", capacity: 2 },
+  { id: "s26", libraryId: "lib-9", name: "Main Floor", capacity: 4 },
+  { id: "s27", libraryId: "lib-9", name: "Group Study", capacity: 5 },
+  { id: "s28", libraryId: "lib-10", name: "Upper Floors", capacity: 4 },
+  { id: "s29", libraryId: "lib-10", name: "Group Study", capacity: 5 },
+];
 
 const STORAGE_KEY_RATINGS = "lionstudy_ratings";
 const STORAGE_KEY_SESSIONS = "lionstudy_focus_sessions";
@@ -69,8 +115,31 @@ function reducer(state, action) {
       };
     }
     case "ADD_EXAM": {
-      const exam = { id: `exam-${Date.now()}`, ...action.payload };
+      const exam = {
+        id: `exam-${Date.now()}`,
+        topics: action.payload.topics || [],
+        todosCompleted: action.payload.todosCompleted || {},
+        ...action.payload,
+      };
       return { ...state, exams: [...state.exams, exam].sort((a, b) => new Date(a.date) - new Date(b.date)) };
+    }
+    case "UPDATE_EXAM": {
+      const { id, updates } = action.payload;
+      return {
+        ...state,
+        exams: state.exams.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+      };
+    }
+    case "TOGGLE_EXAM_TODO": {
+      const { examId, topicId } = action.payload;
+      return {
+        ...state,
+        exams: state.exams.map((e) => {
+          if (e.id !== examId) return e;
+          const tc = { ...(e.todosCompleted || {}), [topicId]: !e.todosCompleted?.[topicId] };
+          return { ...e, todosCompleted: tc };
+        }),
+      };
     }
     case "REMOVE_EXAM": {
       return { ...state, exams: state.exams.filter((e) => e.id !== action.payload) };
@@ -97,6 +166,14 @@ function reducer(state, action) {
     }
     case "SET_WEEKLY_GOAL": {
       return { ...state, weeklyGoalMinutes: action.payload };
+    }
+    case "SET_LIBRARIES_AND_SPACES": {
+      const { libraries, spaces } = action.payload;
+      return {
+        ...state,
+        libraries: libraries?.length ? libraries : state.libraries,
+        spaces: spaces?.length ? spaces : state.spaces,
+      };
     }
     case "SEED_DEMO_DATA": {
       const now = new Date();
