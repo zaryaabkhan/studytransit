@@ -6,48 +6,68 @@
 
 Built for [TreeHacks 2026](https://treehacks.com).
 
+---
+
 ## Inspiration
 
 We kept seeing students wander between libraries, check crowdedness, and lose focus before actually studying. We wanted to cut that friction: a single app to discover the right space, lock in with a focus timer, and track progress with streaks and exam prep. StudyTransit brings discovery, focus, and accountability into one flow, so you spend less time hunting and more time studying.
 
-## What it does
+---
 
-- **Home** – Browse Columbia University libraries (Butler, Avery, Uris, Lehman, etc.) with aggregate ratings. Rate spaces by crowdedness (1–5) to help others.
-- **Discover** – Set preferences (intensity, noise, group size, duration) or describe what you need in plain English. "Find me a spot" shows rule-based matches from crowd ratings; "Get AI suggestions" returns Claude-curated recommendations with reasons.
-- **Lock In** – Pick task type (exam/reading/writing/project), energy, and rate your current space. Run a focused timer. After each session, rate your focus (1–5) and optionally get one AI tip for next time.
-- **Stats** – Weekly minutes, study streaks, coaching tips from your data. Add exams manually or drag-and-drop a syllabus PDF to extract dates and study topics. Click any exam for a checkable to-do list and contextual AI study tips.
+## What It Does
 
-## How we built it
+StudyTransit helps Columbia University students **discover the right study spaces**, **stay focused with a timer**, and **track progress** with streaks and exam prep—all in one app.
 
-React + Vite SPA with React Router. Libraries and study spaces (including capacity) are stored in Firebase Firestore and loaded on startup; the app falls back to built-in Columbia data if Firebase is not configured. Sessions, exams, ratings, and weekly goals live in LocalStorage. Claude (Anthropic) is preferred for AI; OpenAI is fallback. In dev, Vite proxies `/api/anthropic` to avoid CORS. PDF parsing uses pdfjs-dist, then Claude extracts exam dates and study topics. Discover uses `useSpaceRecommendations` (scoring by noise, intensity, occupancy, capacity) plus `getAISpaceRecommendations` for AI.
+| Page | Description |
+|------|-------------|
+| **Home** | Browse Columbia libraries with live occupancy data. See "Best bet now" (least crowded library). Rate spaces (1–5) to contribute crowd-sourced data. |
+| **Discover** | Set preferences: intensity (deep/steady/social), noise level (silent/busy/buzz), group size, session length. Describe needs in plain text. AI recommends 3–5 spaces with personalized reasons. |
+| **Lock In** | Pick task type (exam/reading/writing/project), energy level, and your current space. Run a focus timer (10 sec–3 min). Rate your focus after each session and get AI coaching tips. |
+| **Stats** | Weekly dashboard: study streak, focused minutes, completed sessions. Set weekly goals. Add exams manually or upload a syllabus PDF to extract dates and study topics. Get AI insights and exam-specific tips. |
 
-## Challenges we ran into
+---
+
+## How We Built It
+
+React + Vite SPA with React Router. Libraries and study spaces are stored in Firebase Firestore (collection `Libraries` with subcollection `spaces` per library); the app falls back to built-in Columbia data if Firebase is not configured. Sessions, exams, ratings, and weekly goals live in LocalStorage. Claude (Anthropic) is preferred for AI; OpenAI is fallback. In dev, Vite proxies `/api/anthropic` to avoid CORS. PDF parsing uses pdfjs-dist, then Claude extracts exam dates and study topics. Discover uses `getAISpaceRecommendations` for AI-curated space matches (with rule-based demo fallback when no API key).
+
+---
+
+## Challenges We Ran Into
 
 - **Syllabus parsing** – PDFs vary a lot. We used text extraction plus Claude to get exam dates and topics, with fallback "recommended" topics when parsing failed.
 - **Claude from the browser** – CORS and direct-browser access required some setup. We iterated on prompts and models until AI responses were consistent.
 - **Scope** – Balancing AI features (recommendations, syllabus parsing, insights, tips) with a simple UI. We cut or simplified features to keep the core flow clear.
 
-## Accomplishments that we're proud of
+---
+
+## Accomplishments That We're Proud Of
 
 - **End-to-end flow** – Discovery → Lock In → Stats, all working together.
 - **AI integration** – Multiple AI touchpoints (recommendations, syllabus parsing, study tips, weekly insights) with fallbacks when the API key is missing.
 - **Exam workflow** – Upload a PDF, get exams and study to-dos, and check them off as you go.
 - **Clean, themed UI** – Columbia University branding with consistent footer nav and modals.
 
-## What we learned
+---
+
+## What We Learned
 
 - AI works well for structured tasks (parsing syllabi, summarizing stats, generating tips) when prompts are clear and outputs are constrained.
 - LocalStorage is enough for a demo; sessions, exams, and ratings persist without a backend.
 - Small UX choices (shorter demo timer, simpler reflection, no clutter) make the app feel calmer and easier to use.
 
-## What's next for StudyTransit
+---
+
+## What's Next for StudyTransit
 
 - **Campus integration** – Real library occupancy or space availability from Columbia systems.
 - **Backend + auth** – Sync sessions and exams across devices and users.
 - **Virtual study rooms** – Zoom integration for one-click group study links.
 - **Mobile app** – Native experience for on-the-go discovery and focus.
 
-## Tracks we are applying to
+---
+
+## Tracks We Are Applying To
 
 **We are in the Education track** (sponsor: Zoom). TreeHacks 2026 Education Grand Prize awards the top study/learning apps that help students discover spaces, focus, and track progress.
 
@@ -56,23 +76,112 @@ StudyTransit fits the Education track by:
 - Lock In focus timer for productive study sessions
 - Stats dashboard with streaks, exam deadlines, and AI-powered study tips
 
+---
 
-## Features
+## Tech Stack
 
-- **Home** – Columbia library list with ratings
-- **Discover** – Preference-based + AI space recommendations
-- **Lock In** – Focus timer (10 sec–3 min), task/energy, post-session reflection, AI tips
-- **Stats** – Weekly dashboard, streaks, exam deadlines, syllabus PDF upload, study to-dos
+- **Frontend**: React 18, Vite 6, React Router 6
+- **Data**: Firebase Firestore (libraries, spaces, capacity)
+- **AI**: Anthropic Claude (primary), OpenAI (fallback). Demo mode when no API key.
+- **PDF**: pdfjs-dist for syllabus text extraction + AI for exam/topic parsing
+- **Charts**: Recharts for space occupancy trends
+- **Persistence**: LocalStorage for ratings, focus sessions, exams, goals
 
-## Tech stack
+---
 
-- React 18, Vite 6, React Router 6
-- Firebase (Firestore for libraries and spaces with capacity, Hosting)
-- pdfjs-dist for PDF text extraction
-- Claude (Anthropic) + OpenAI APIs (demo mode without key)
-- LocalStorage for sessions, exams, ratings, goals
+## Project Structure
 
-## Run locally
+```
+react-app/
+├── src/
+│   ├── App.jsx              # Routes + AppShell with footer nav
+│   ├── main.jsx
+│   ├── theme.css             # Columbia University theme (primary blues)
+│   ├── styles.css
+│   │
+│   ├── pages/
+│   │   ├── HomePage.jsx      # Library list, best bet, rating modal
+│   │   ├── LibraryPage.jsx   # Spaces for one library (SpaceCard grid)
+│   │   ├── DiscoverPage.jsx  # Preference form → AI recommendations
+│   │   ├── LockPage.jsx     # Focus timer, reflection, AI tips
+│   │   └── StatsPage.jsx    # Streaks, goals, exams, syllabus upload, AI insights
+│   │
+│   ├── components/
+│   │   ├── SpaceCard.jsx    # Occupancy display, weekly chart, community avg
+│   │   ├── FooterNav.jsx    # Home / Discover / Lock In / Stats
+│   │   └── Logo.jsx
+│   │
+│   ├── state/
+│   │   └── AppState.jsx     # Global state (libraries, spaces, ratings, sessions, exams)
+│   │
+│   ├── services/
+│   │   ├── aiClient.js      # Claude/OpenAI: recommendations, coaching, syllabus parsing
+│   │   ├── pdfParser.js     # Extract text from PDFs
+│   │   └── firebase.js      # Firestore init (alternative to firebase/)
+│   │
+│   ├── firebase/
+│   │   ├── firebase.js      # Firebase app + Firestore db
+│   │   ├── firebase_utility.jsx  # fetchAllLibraries, fetchAllSpacesFromLibrary, updateSpaceCapacityAndCounter
+│   │   └── seed_columbia_libraries.js.js  # Admin seed script (Libraries collection)
+│   │
+│   └── hooks/
+│       └── useRecommender.js  # Rule-based scoring (noise, intensity, capacity)
+│
+├── scripts/
+│   └── seed-firestore.js    # Prints flat libraries/spaces JSON (different schema)
+├── vercel.json              # SPA rewrites for Vercel deploy
+└── vite.config.js           # Proxy /api/anthropic → Anthropic API (keeps key server-side in dev)
+```
+
+---
+
+## How It Works
+
+### Libraries & Spaces (Firebase)
+
+- **Collection**: `Libraries` (doc IDs: lib1, lib2, …)
+- **Fields**: `library_name`, optional `location`
+- **Subcollection**: `Libraries/{libraryId}/spaces` — each space has `room_data`:
+  - `space_name`, `space_capacity`, `space_counter`
+  - Day keys: `Monday`, `Tuesday`, … for weekly occupancy trends
+
+The app loads libraries on mount, then fetches spaces per library. If Firebase is not configured, it falls back to hardcoded Columbia data in `AppState.jsx`.
+
+### Occupancy & Ratings
+
+- **space_capacity** / **space_counter** → ratio (capacity ÷ people rated) → fullness 1–5
+- When a user starts a Lock In session and rates a space, the app increments `space_counter` and adds the rating to `space_capacity` (weighted). Firestore is updated via `updateSpaceCapacityAndCounter`.
+- **Community ratings** (1–5) are stored in LocalStorage and used for Discover scoring and SpaceCard display.
+
+### AI Features (aiClient.js)
+
+| Function | Purpose |
+|----------|---------|
+| `getAISpaceRecommendations` | Matches spaces to preferences; returns JSON array with space, library, reason |
+| `getSessionCoachingSummary` | Post-session tip based on task, energy, duration |
+| `getWeeklyStudyInsights` | Interpret weekly stats into actionable suggestions |
+| `parseSyllabusExams` | Extract exam/midterm dates from PDF text |
+| `extractSyllabusTopics` | Extract study topics from syllabus for an exam |
+| `getExamStudyTip` | One contextual tip for upcoming exam |
+| `getFocusPrompt` | Short pre-session motivation |
+
+Uses Anthropic first; falls back to OpenAI if no Anthropic key. Demo mode returns built-in responses when neither key is set.
+
+### Focus Sessions (Lock In)
+
+- Sessions are stored in LocalStorage (`lionstudy_focus_sessions`).
+- Each session: `started_at`, `duration_minutes`, `task`, `energy`, `completed`, `reflection` (optional focus rating).
+- Stats page computes: weekly minutes, study streak (consecutive days with ≥1 completed session), task breakdown, rule-based coaching tips.
+
+### Exam Workflow
+
+- Add exams manually (name + date) or upload a syllabus PDF.
+- PDF → `extractTextFromPdf` (pdfjs-dist) → `parseSyllabusExams` + `extractSyllabusTopics` (AI).
+- Each exam has a checkable topic list; "Get a study tip" calls `getExamStudyTip`.
+
+---
+
+## Run Locally
 
 ```bash
 cd react-app
@@ -80,43 +189,70 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173
+Open **http://localhost:5173**
 
-### Optional: Firebase (libraries and spaces)
+---
 
-Add to `.env` to load libraries and spaces from Firestore:
+## Environment Variables
+
+Create `react-app/.env`:
+
+### Firebase (required for live library data)
 
 ```bash
 VITE_FIREBASE_API_KEY=your-api-key
 VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
 VITE_FIREBASE_PROJECT_ID=your-project-id
-VITE_FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-VITE_FIREBASE_MESSAGING_SENDER_ID=your-sender-id
-VITE_FIREBASE_APP_ID=your-app-id
 ```
 
-Firestore collections: `libraries` (doc ID = lib-1, lib-2, …; fields: name, location), `spaces` (doc ID = s1, s2, …; fields: libraryId, name, capacity). Run `node scripts/seed-firestore.js` to print seed data, then add docs in Firebase Console with matching IDs. Without Firebase config, the app uses built-in Columbia data.
+Without these, the app uses built-in Columbia libraries/spaces (no Firestore).
 
-### Optional: AI API keys (Claude or OpenAI)
-
-Add to `.env`:
+### AI (optional – fallback to demo responses)
 
 ```bash
-# Claude (Anthropic) – checked first
+# Anthropic (Claude) – checked first
 VITE_ANTHROPIC_API_KEY=sk-ant-api03-your-key
 
 # OpenAI – used when Anthropic key is not set
 VITE_OPENAI_API_KEY=sk-your-key
 ```
 
-Without either key, AI features use built-in demo responses.
+In dev, Vite proxies `/api/anthropic` to avoid CORS and keeps the API key on the server side.
 
-## Demo for judges
+---
 
-1. **Home** – Browse libraries, rate a space (picks space + crowdedness 1–5).
-2. **Discover** – Pick intensity, noise, group size, duration. Click "Find me a spot" for rule-based matches. Click "Get AI suggestions" for AI-curated recommendations.
+## Seeding Firestore
+
+To populate Firestore with Columbia libraries and spaces:
+
+```bash
+cd react-app
+node src/firebase/seed_columbia_libraries.js.js /path/to/serviceAccountKey.json
+```
+
+Requires a Firebase service account key. Writes to `Libraries` collection with `library_name` and `spaces` subcollection containing `room_data` (space_name, space_capacity, space_counter, day counts).
+
+---
+
+## Demo for Judges
+
+1. **Home** – Browse libraries, rate a space (pick space + crowdedness 1–5).
+2. **Discover** – Pick intensity, noise, group size, duration. Click "Find me a spot" for AI-curated recommendations.
 3. **Lock In** – Select task, energy, and your space. Start the timer (10 sec for quick demo). After reflection, click "Get a tip for next time" for AI advice.
-4. **Stats** – Click "Load demo data (for judges)" to seed sample sessions, then "Ask AI for weekly insights." Add an exam manually or upload a syllabus PDF. Open an exam to see the study to-do and "Get a study tip."
+4. **Stats** – Complete a few Lock In sessions first, then "Ask AI for weekly insights." Add an exam manually or upload a syllabus PDF. Open an exam to see the study to-do and "Get a study tip."
+
+---
+
+## Deploy
+
+Configured for Vercel (`vercel.json`):
+
+```bash
+cd react-app
+npm run build
+```
+
+---
 
 ## License
 
