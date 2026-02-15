@@ -3,7 +3,7 @@ import { useAppState } from "../state/AppState.jsx";
 
 export function useSpaceRecommendations(preferences) {
   const {
-    state: { spaces, libraries, ratings },
+    state: { allSpaces = [], libraries, ratings },
   } = useAppState();
 
   const normPrefs = useMemo(() => normalizePreferences(preferences), [preferences]);
@@ -13,16 +13,19 @@ export function useSpaceRecommendations(preferences) {
 
     const avgBySpace = new Map();
     ratings.forEach((r) => {
-      const entry = avgBySpace.get(r.spaceId) || { sum: 0, count: 0 };
+      const key = r.libraryId ? `${r.libraryId}:${r.spaceId}` : r.spaceId;
+      const entry = avgBySpace.get(key) || { sum: 0, count: 0 };
       entry.sum += Number(r.value || 0);
       entry.count += 1;
-      avgBySpace.set(r.spaceId, entry);
+      avgBySpace.set(key, entry);
     });
 
-    // Include ALL spaces: use real avg when rated, else default 3 (moderate) so Discover works for new users
-    return spaces
+    const spaceKey = (s) => (s.libraryId ? `${s.libraryId}:${s.id}` : s.id);
+
+    return (allSpaces || [])
       .map((space) => {
-        const entry = avgBySpace.get(space.id);
+        const key = spaceKey(space);
+        const entry = avgBySpace.get(key);
         const avg = entry?.count
           ? Math.round((entry.sum / entry.count) * 100) / 100
           : 3;
@@ -32,7 +35,7 @@ export function useSpaceRecommendations(preferences) {
       })
       .sort((a, b) => b.score - a.score)
       .slice(0, 10);
-  }, [spaces, libraries, ratings, normPrefs]);
+  }, [allSpaces, libraries, ratings, normPrefs]);
 }
 
 function normalizePreferences(prefs) {

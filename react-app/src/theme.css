@@ -13,4 +13,8 @@
   --ink-muted: #475569;
   --primary-rgb: 13, 92, 86;
   --accent-rgb: 180, 83, 9;
+  --occupancy-empty: #e2e8f0;
+  --occupancy-low: #0d9488;
+  --occupancy-mid: #d97706;
+  --occupancy-high: #b91c1c;
 }
