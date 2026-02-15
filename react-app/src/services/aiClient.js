@@ -3,12 +3,13 @@
 // VITE_OPENAI_API_KEY is set; otherwise returns demo responses.
 
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
+const ANTHROPIC_URL =
+  import.meta.env.DEV ? "/api/anthropic/v1/messages" : "https://api.anthropic.com/v1/messages";
 const OPENAI_MODEL = "gpt-4o-mini";
-const ANTHROPIC_MODEL = "claude-3-5-haiku-20241022";
+const ANTHROPIC_MODEL = "claude-3-haiku-20240307";
 
 function getAnthropicKey() {
-  return import.meta.env.VITE_ANTHROPIC_API_KEY || "";
+  return (import.meta.env.VITE_ANTHROPIC_API_KEY || "").trim();
 }
 
 function getOpenAIKey() {
@@ -30,6 +31,13 @@ function useClaude() {
 }
 
 async function callChatClaude(messages, options = {}) {
+  const apiKey = getAnthropicKey();
+  if (!apiKey || apiKey.length < 20) {
+    throw new Error(
+      "API key not loaded. Ensure VITE_ANTHROPIC_API_KEY is in react-app/.env, save the file, then restart: npm run dev"
+    );
+  }
+
   const systemMsg = messages.find((m) => m.role === "system");
   const userMsg = messages.find((m) => m.role === "user");
   const system = systemMsg?.content || "";
@@ -39,8 +47,13 @@ async function callChatClaude(messages, options = {}) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": getAnthropicKey(),
-      "anthropic-version": "2023-06-01",
+      ...(import.meta.env.DEV
+        ? {}
+        : {
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true",
+          }),
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
@@ -53,7 +66,21 @@ async function callChatClaude(messages, options = {}) {
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Claude API failed: ${response.status}`);
+    let detail = "";
+    try {
+      const err = JSON.parse(text);
+      detail = err.error?.message || err.message || text.slice(0, 200);
+    } catch {
+      detail = text.slice(0, 200);
+    }
+    if (response.status === 401) {
+      throw new Error(
+        "Invalid API key (401). " +
+        (detail ? `API says: ${detail}. ` : "") +
+        "Create a new key at console.anthropic.com → API keys, copy it when shown (you only see it once), and add to react-app/.env as VITE_ANTHROPIC_API_KEY=your-key"
+      );
+    }
+    throw new Error(`Claude API failed: ${response.status}. ${detail || text}`);
   }
 
   const data = await response.json();
@@ -271,4 +298,183 @@ export async function getWeeklyStudyInsights(summary) {
   }
 
   return getDemoWeeklyInsights(summary);
+}
+
+/**
+ * Parse a syllabus (text) and extract exam/midterm dates using Claude.
+ * Returns array of { name: string, date: string (YYYY-MM-DD) } or empty array.
+ */
+export async function parseSyllabusExams(syllabusText) {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.length < 10) {
+    throw new Error("API key needed. Add VITE_ANTHROPIC_API_KEY to .env for syllabus parsing.");
+  }
+
+  const result = await callChat(
+    [
+      {
+        role: "system",
+        content:
+          "You extract exam and midterm dates from course syllabi. " +
+          "Return ONLY a valid JSON array of objects, no other text. " +
+          "Each object must have: name (string, e.g. 'Midterm 1' or 'CS 101 Final'), date (string in YYYY-MM-DD format). " +
+          "Use the current year for dates if only month/day given. Infer dates from context (e.g. 'Week 6' = approximate). " +
+          "Skip assignment due dates; focus on exams, midterms, finals. If no exams found, return [].",
+      },
+      {
+        role: "user",
+        content:
+          "Extract all exam and midterm dates from this syllabus. Return a JSON array only.\n\n" +
+          syllabusText.slice(0, 15000),
+      },
+    ],
+    { temperature: 0.2, maxTokens: 800 }
+  );
+
+  if (!result) return [];
+
+  try {
+    const match = result.match(/\[[\s\S]*\]/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .filter((x) => x && typeof x.name === "string" && x.date)
+        .map((x) => ({
+          name: String(x.name).trim(),
+          date: String(x.date).trim().slice(0, 10),
+        }))
+        .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date));
+    }
+  } catch {
+    // ignore parse errors
+  }
+  return [];
+}
+
+/**
+ * Extract study topics/todos from syllabus text using Claude.
+ * Returns array of { id, text, recommended } (recommended=true when we couldn't parse from syllabus).
+ */
+export async function extractSyllabusTopics(syllabusText, examName) {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.length < 10) {
+    return getDefaultStudyTopics(examName);
+  }
+
+  try {
+    const result = await callChat(
+      [
+        {
+          role: "system",
+          content:
+            "You extract key topics, modules, or units that a student should study for an exam from course syllabi. " +
+            "Return ONLY a valid JSON array of strings, each a study topic (e.g. 'Unit 3: Derivatives', 'Chapter 5: Cell biology'). " +
+            "Limit to 5-12 topics. If the syllabus has a clear outline or table of contents, use that. " +
+            "If unclear, infer from headings and section titles. No other text.",
+        },
+        {
+          role: "user",
+          content: `Extract study topics for "${examName}" from this syllabus. Return a JSON array of strings only.\n\n` + syllabusText.slice(0, 12000),
+        },
+      ],
+      { temperature: 0.3, maxTokens: 600 }
+    );
+
+    if (!result) return getDefaultStudyTopics(examName);
+
+    const match = result.match(/\[[\s\S]*?\]/);
+    if (match) {
+      const arr = JSON.parse(match[0]);
+      if (Array.isArray(arr) && arr.length > 0) {
+        return arr.filter((x) => typeof x === "string" && x.trim()).map((text, i) => ({
+          id: `topic-${i}`,
+          text: String(text).trim(),
+          recommended: false,
+        }));
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+  return getDefaultStudyTopics(examName);
+}
+
+export function getDefaultStudyTopics(examName) {
+  return [
+    { id: "t1", text: "Review main concepts from lectures", recommended: true },
+    { id: "t2", text: "Practice problems from homework", recommended: true },
+    { id: "t3", text: "Key definitions and terminology", recommended: true },
+    { id: "t4", text: "Past exam or practice tests", recommended: true },
+    { id: "t5", text: "Readings from syllabus", recommended: true },
+  ];
+}
+
+/**
+ * Returns a short AI-generated focus prompt before a session (1 sentence).
+ */
+export async function getFocusPrompt(taskType, energy, durationMinutes) {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.length < 10) {
+    const fallbacks = {
+      exam: "One session, one concept. Nail it.",
+      reading: "Skim first, then read with intent.",
+      writing: "Draft now, polish later.",
+      project: "One small win in this block.",
+    };
+    return fallbacks[taskType] || "Focus on progress, not perfection.";
+  }
+
+  try {
+    const result = await callChat(
+      [
+        {
+          role: "system",
+          content:
+            "You are a study coach. Give exactly ONE short, punchy sentence (max 10 words) to help a student focus before a study session. No quotes, no filler.",
+        },
+        {
+          role: "user",
+          content: `Task: ${taskType || "general focus"}. Energy: ${energy || "ok"}. Duration: ${durationMinutes || 25} min. One sentence only.`,
+        },
+      ],
+      { temperature: 0.8, maxTokens: 60 }
+    );
+    return result?.trim() || "One block at a time.";
+  } catch {
+    return "One block at a time.";
+  }
+}
+
+/**
+ * Returns one contextual study tip for an upcoming exam.
+ */
+export async function getExamStudyTip(examName, daysLeft, topicNames = []) {
+  const apiKey = getApiKey();
+  if (!apiKey || apiKey.length < 10) {
+    if (daysLeft <= 3) return "Focus on practice problems and key formulas—rereading notes is less effective now.";
+    if (daysLeft <= 7) return "Spaced practice: review in 2–3 short sessions rather than one long cram.";
+    return "Build habits early: 20–30 min daily beats last-minute marathon studying.";
+  }
+
+  try {
+    const topics = topicNames.length ? topicNames.join(", ") : "general prep";
+    const result = await callChat(
+      [
+        {
+          role: "system",
+          content:
+            "You are a study coach. Give ONE concrete, actionable tip for this exam (1–2 sentences max). Be specific to the timeframe.",
+        },
+        {
+          role: "user",
+          content: `Exam: ${examName}. Days until exam: ${daysLeft}. Topics to study: ${topics}. One short tip.`,
+        },
+      ],
+      { temperature: 0.6, maxTokens: 120 }
+    );
+    return result?.trim() || "Focus on active recall—test yourself instead of just rereading.";
+  } catch {
+    return "Focus on active recall—test yourself instead of just rereading.";
+  }
 }

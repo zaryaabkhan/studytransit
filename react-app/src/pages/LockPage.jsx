@@ -8,8 +8,8 @@ export function LockPage() {
     dispatch,
   } = useAppState();
 
-  const [duration, setDuration] = useState(10);
-  const [remaining, setRemaining] = useState(duration * 60);
+  const [duration, setDuration] = useState(10); /* seconds, min 10 for demo */
+  const [remaining, setRemaining] = useState(duration);
   const [timerState, setTimerState] = useState("idle"); // idle | running | completed
   const [taskType, setTaskType] = useState("");
   const [energy, setEnergy] = useState("");
@@ -17,60 +17,30 @@ export function LockPage() {
   const [selectedSpaceId, setSelectedSpaceId] = useState(null);
   const [rating, setRating] = useState(3);
   const [feedback, setFeedback] = useState({ message: "", status: null });
-  const [coachNotes, setCoachNotes] = useState("");
-  const [coachLoading, setCoachLoading] = useState(false);
-  const [coachError, setCoachError] = useState("");
   const [reflectionFocus, setReflectionFocus] = useState(3);
-  const [reflectionNote, setReflectionNote] = useState("");
-  const [timerNotification, setTimerNotification] = useState("");
+  const [postTip, setPostTip] = useState("");
+  const [postTipLoading, setPostTipLoading] = useState(false);
 
   const intervalRef = useRef(null);
-  const notificationIntervalRef = useRef(null);
   const sessionRef = useRef(null);
+  const lastCompletedSessionRef = useRef(null);
 
   useEffect(() => {
-    setRemaining(duration * 60);
+    setRemaining(duration);
   }, [duration]);
-
-  const TIMER_MESSAGES = [
-    "You got it",
-    "Keep up the good work",
-    "Get to work",
-    "Stay focused",
-    "You're doing great",
-    "One step at a time",
-    "Almost there",
-    "Keep going",
-  ];
 
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (notificationIntervalRef.current) clearInterval(notificationIntervalRef.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (timerState !== "running") {
-      setTimerNotification("");
-      return;
-    }
-    const pickMessage = () => TIMER_MESSAGES[Math.floor(Math.random() * TIMER_MESSAGES.length)];
-    setTimerNotification(pickMessage());
-    notificationIntervalRef.current = setInterval(() => {
-      setTimerNotification(pickMessage());
-    }, 90 * 1000); // every 90 seconds
-    return () => {
-      if (notificationIntervalRef.current) clearInterval(notificationIntervalRef.current);
-    };
-  }, [timerState]);
 
   function configureSession() {
     const now = new Date();
     sessionRef.current = {
       id: `session-${now.getTime()}`,
       started_at: now.toISOString(),
-      duration_minutes: duration,
+      duration_minutes: duration / 60,
       task: taskType || null,
       energy: energy || null,
       completed: false,
@@ -91,23 +61,41 @@ export function LockPage() {
 
   function submitReflection() {
     if (!sessionRef.current) return;
+    lastCompletedSessionRef.current = { ...sessionRef.current, completed: true, reflection: { focusRating: reflectionFocus } };
     completeSession(true, {
       focusRating: reflectionFocus,
-      note: reflectionNote.trim() || null,
     });
     setTimerState("idle");
-    setRemaining(duration * 60);
+    setRemaining(duration);
     setFeedback({ message: "Nice work! Reflection helps build better habits.", status: "success" });
     setReflectionFocus(3);
-    setReflectionNote("");
+    setPostTip("");
   }
 
   function skipReflection() {
     if (!sessionRef.current) return;
+    lastCompletedSessionRef.current = { ...sessionRef.current, completed: true };
     completeSession(true);
     setTimerState("idle");
-    setRemaining(duration * 60);
+    setRemaining(duration);
     setFeedback({ message: coachingCompletionMessage(), status: "success" });
+    setPostTip("");
+  }
+
+  async function fetchPostTip() {
+    const session = lastCompletedSessionRef.current;
+    if (!session) return;
+    setPostTipLoading(true);
+    setPostTip("");
+    try {
+      const advice = await getSessionCoachingSummary(session, "");
+      const firstTip = advice?.split("\n")[0]?.replace(/^[•\-\*]\s*/, "") || "Take a short break before your next block.";
+      setPostTip(firstTip);
+    } catch {
+      setPostTip("Take a short break before your next block.");
+    } finally {
+      setPostTipLoading(false);
+    }
   }
 
   function coachingStartMessage() {
@@ -130,7 +118,7 @@ export function LockPage() {
   }
 
   function coachingCompletionMessage() {
-    if (duration >= 90) {
+    if (duration >= 120) {
       return "That was a long block—take a 5-min walk or stretch before your next session. Your brain consolidates better with real breaks. " + (taskType === "exam" ? "Jot down 1–2 concepts that still feel shaky." : taskType === "reading" ? "Capture one sentence on what you learned." : taskType === "writing" ? "Leave a note for your future self." : "Nice work!");
     }
     if (taskType === "exam") {
@@ -156,7 +144,7 @@ export function LockPage() {
     });
 
     setTimerState("running");
-    setRemaining(duration * 60);
+    setRemaining(duration);
     configureSession();
     setFeedback({ message: coachingStartMessage(), status: "success" });
 
@@ -178,36 +166,12 @@ export function LockPage() {
     if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = null;
     setTimerState("idle");
-    setRemaining(duration * 60);
+    setRemaining(duration);
     completeSession(false);
     setFeedback({ message: "", status: null });
   }
 
-  async function askCoach() {
-    if (!sessionRef.current && timerState === "idle") {
-      setCoachError("Start or complete a session first so the coach has something to react to.");
-      return;
-    }
-    const session = sessionRef.current || {
-      started_at: new Date().toISOString(),
-      duration_minutes: duration,
-      task: taskType || null,
-      energy: energy || null,
-    };
-
-    setCoachLoading(true);
-    setCoachError("");
-    try {
-      const advice = await getSessionCoachingSummary(session, "");
-      setCoachNotes(advice);
-    } catch (err) {
-      setCoachError(err.message || "Unable to reach study coach right now.");
-    } finally {
-      setCoachLoading(false);
-    }
-  }
-
-  const totalSeconds = duration * 60;
+  const totalSeconds = duration;
   const progress = totalSeconds > 0 ? 1 - remaining / totalSeconds : 0;
   const minutes = Math.floor(remaining / 60)
     .toString()
@@ -263,14 +227,14 @@ export function LockPage() {
               <input
                 id="duration-range"
                 type="range"
-                min={5}
+                min={10}
                 max={180}
-                step={5}
+                step={10}
                 value={duration}
                 disabled={timerState === "running"}
                 onChange={(e) => setDuration(Number(e.target.value))}
               />
-              <div className="duration-value">{duration} minutes</div>
+              <div className="duration-value">{duration < 60 ? `${duration} sec` : `${Math.round(duration / 60)} min`}</div>
             </div>
 
             <div className="lock-context-grid">
@@ -348,11 +312,6 @@ export function LockPage() {
         </section>
 
         <section className="lock-actions">
-          {timerNotification && timerState === "running" && (
-            <div className="lock-timer-notification" role="status">
-              {timerNotification}
-            </div>
-          )}
           {feedback.message && (
             <div className="survey-callout is-visible" data-status={feedback.status || ""}>
               {feedback.message}
@@ -366,19 +325,11 @@ export function LockPage() {
           >
             {timerState === "completed" ? "Session complete!" : "Turn On Focus Mode"}
           </button>
-          {(!taskType || !energy || !selectedSpaceId) && timerState === "idle" && (
-            <p className="lock-required-hint">
-              Select task, energy, and rate your room to start
-            </p>
-          )}
-          <div className="button-separator">
-            <span className="separator-line"></span>
-            <span className="separator-text">OR</span>
-            <span className="separator-line"></span>
-          </div>
-          <button className="primary-outline-button" type="button" onClick={askCoach}>
-            {coachLoading ? "Asking coach..." : "Ask AI study coach"}
-          </button>
+            {(!taskType || !energy || !selectedSpaceId) && timerState === "idle" && (
+              <p className="lock-required-hint">
+                Select task, energy, and rate your room to start
+              </p>
+            )}
           {timerState === "running" && (
             <button className="muted-button" type="button" onClick={cancelTimer}>
               Cancel session
@@ -400,13 +351,6 @@ export function LockPage() {
                 ))}
               </div>
               <p className="reflection-rating-caption">1 = distracted · 5 = laser-focused</p>
-              <input
-                type="text"
-                placeholder="One thing that helped or distracted? (optional)"
-                value={reflectionNote}
-                onChange={(e) => setReflectionNote(e.target.value)}
-                className="reflection-note"
-              />
               <div className="reflection-actions">
                 <button type="button" className="primary-button" onClick={submitReflection}>
                   Done
@@ -418,30 +362,27 @@ export function LockPage() {
             </div>
           )}
           {(timerState === "idle" && feedback.status === "success") && (
-            <button
-              className="muted-button"
-              type="button"
-              onClick={() => setFeedback({ message: "", status: null })}
-            >
-              Start another session
-            </button>
+            <>
+              <button
+                type="button"
+                className="lock-ai-prompt-btn"
+                onClick={fetchPostTip}
+                disabled={postTipLoading}
+              >
+                {postTipLoading ? "Getting tip…" : "💡 Get a tip for next time"}
+              </button>
+              {postTip && <p className="lock-post-tip">{postTip}</p>}
+              <button
+                className="muted-button"
+                type="button"
+                onClick={() => { setFeedback({ message: "", status: null }); setPostTip(""); }}
+              >
+                Start another session
+              </button>
+            </>
           )}
         </section>
       </main>
-
-      {(coachNotes || coachError) && (
-        <section className="coach-panel">
-          <h2 className="coach-title">Coach suggestions</h2>
-          {coachError && <p className="coach-error">{coachError}</p>}
-          {coachNotes && (
-            <div className="coach-body">
-              {coachNotes.split("\n").map((line, idx) => (
-                <p key={idx}>{line}</p>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
 
     </div>
   );

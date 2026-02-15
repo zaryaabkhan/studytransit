@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
+import { fetchLibrariesAndSpacesFromFirebase } from "../services/firebase.js";
 
-// All Columbia University libraries and study spaces (from library.columbia.edu)
+// Fallback: Columbia University libraries and study spaces (used when Firebase is not configured or fetch fails)
 const initialLibraries = [
   { id: "lib-1", name: "Butler Library", location: "535 W 114th St" },
   { id: "lib-2", name: "Avery Architectural & Fine Arts", location: "Avery Hall" },
@@ -86,8 +87,31 @@ function reducer(state, action) {
       };
     }
     case "ADD_EXAM": {
-      const exam = { id: `exam-${Date.now()}`, ...action.payload };
+      const exam = {
+        id: `exam-${Date.now()}`,
+        topics: action.payload.topics || [],
+        todosCompleted: action.payload.todosCompleted || {},
+        ...action.payload,
+      };
       return { ...state, exams: [...state.exams, exam].sort((a, b) => new Date(a.date) - new Date(b.date)) };
+    }
+    case "UPDATE_EXAM": {
+      const { id, updates } = action.payload;
+      return {
+        ...state,
+        exams: state.exams.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+      };
+    }
+    case "TOGGLE_EXAM_TODO": {
+      const { examId, topicId } = action.payload;
+      return {
+        ...state,
+        exams: state.exams.map((e) => {
+          if (e.id !== examId) return e;
+          const tc = { ...(e.todosCompleted || {}), [topicId]: !e.todosCompleted?.[topicId] };
+          return { ...e, todosCompleted: tc };
+        }),
+      };
     }
     case "REMOVE_EXAM": {
       return { ...state, exams: state.exams.filter((e) => e.id !== action.payload) };
@@ -113,6 +137,14 @@ function reducer(state, action) {
     }
     case "SET_WEEKLY_GOAL": {
       return { ...state, weeklyGoalMinutes: action.payload };
+    }
+    case "SET_LIBRARIES_AND_SPACES": {
+      const { libraries, spaces } = action.payload;
+      return {
+        ...state,
+        libraries: libraries?.length ? libraries : state.libraries,
+        spaces: spaces?.length ? spaces : state.spaces,
+      };
     }
     case "SEED_DEMO_DATA": {
       const now = new Date();
@@ -142,6 +174,17 @@ function reducer(state, action) {
 
 export function AppStateProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
+
+  useEffect(() => {
+    fetchLibrariesAndSpacesFromFirebase().then((result) => {
+      if (result) {
+        dispatch({
+          type: "SET_LIBRARIES_AND_SPACES",
+          payload: { libraries: result.libraries, spaces: result.spaces },
+        });
+      }
+    });
+  }, []);
 
   useEffect(() => {
     const ratings = loadFromStorage(STORAGE_KEY_RATINGS, [], "studytransit_ratings");

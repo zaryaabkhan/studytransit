@@ -1,16 +1,16 @@
-/* StudyTransit — Single theme (teal/amber)
-   Colors chosen for WCAG AA contrast */
+/* StudyTransit — Columbia University themed
+   Columbia Primary Blue, Columbia Blue, Secondary Blues */
 
 :root {
-  --primary: #0d5c56;
-  --primary-light: #0f766e;
-  --primary-dark: #094943;
-  --accent: #b45309;
-  --accent-light: #d97706;
+  --primary: #1D4F91;
+  --primary-light: #6CACE4;
+  --primary-dark: #003087;
+  --accent: #0077C8;
+  --accent-light: #B9D9EB;
   --surface: #ffffff;
   --surface-warm: #f8fafc;
   --ink: #0f172a;
   --ink-muted: #475569;
-  --primary-rgb: 13, 92, 86;
-  --accent-rgb: 180, 83, 9;
+  --primary-rgb: 29, 79, 145;
+  --accent-rgb: 0, 119, 200;
 }

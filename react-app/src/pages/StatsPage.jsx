@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { useAppState } from "../state/AppState.jsx";
-import { getWeeklyStudyInsights } from "../services/aiClient.js";
+import { getWeeklyStudyInsights, parseSyllabusExams, extractSyllabusTopics, getDefaultStudyTopics, getExamStudyTip } from "../services/aiClient.js";
+import { extractTextFromPdf } from "../services/pdfParser.js";
 
 export function StatsPage() {
   const {
@@ -13,8 +14,16 @@ export function StatsPage() {
   const [aiError, setAiError] = useState("");
   const [goalInput, setGoalInput] = useState("");
   const [showAddExam, setShowAddExam] = useState(false);
+  const [addExamMode, setAddExamMode] = useState("choice"); // "choice" | "manual" | "syllabus"
   const [examName, setExamName] = useState("");
   const [examDate, setExamDate] = useState("");
+  const [syllabusLoading, setSyllabusLoading] = useState(false);
+  const [syllabusError, setSyllabusError] = useState("");
+  const [selectedExam, setSelectedExam] = useState(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [examTip, setExamTip] = useState("");
+  const [examTipLoading, setExamTipLoading] = useState(false);
+  const fileInputRef = useRef(null);
 
   const { weeklyMinutes, completedSessions, recentCompleted, studyStreak } = useMemo(() => {
     const now = new Date();
@@ -178,11 +187,81 @@ export function StatsPage() {
     e.preventDefault();
     const d = new Date(examDate);
     if (examName.trim() && !isNaN(d.getTime())) {
-      dispatch({ type: "ADD_EXAM", payload: { name: examName.trim(), date: d.toISOString().slice(0, 10) } });
+      const topics = getDefaultStudyTopics(examName.trim());
+      dispatch({
+        type: "ADD_EXAM",
+        payload: {
+          name: examName.trim(),
+          date: d.toISOString().slice(0, 10),
+          topics: topics.map((t) => ({ id: t.id, text: t.text, recommended: t.recommended })),
+          todosCompleted: {},
+        },
+      });
       setExamName("");
       setExamDate("");
       setShowAddExam(false);
+      setAddExamMode("choice");
     }
+  }
+
+  function closeExamModal() {
+    setShowAddExam(false);
+    setAddExamMode("choice");
+    setSyllabusError("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function processPdfFile(file) {
+    if (!file || file.type !== "application/pdf") return;
+    setSyllabusLoading(true);
+    setSyllabusError("");
+    try {
+      const text = await extractTextFromPdf(file);
+      if (!text || text.trim().length < 50) {
+        setSyllabusError("Could not extract text. Try a different PDF or ensure it has selectable text.");
+        return;
+      }
+      const parsedExams = await parseSyllabusExams(text);
+      if (parsedExams.length === 0) {
+        setSyllabusError("No exam dates found in this syllabus.");
+        return;
+      }
+      const firstExam = parsedExams[0];
+      const topics = await extractSyllabusTopics(text, firstExam.name);
+      parsedExams.forEach((ex) => {
+        dispatch({
+          type: "ADD_EXAM",
+          payload: {
+            name: ex.name,
+            date: ex.date,
+            topics,
+            todosCompleted: {},
+          },
+        });
+      });
+      closeExamModal();
+    } catch (err) {
+      setSyllabusError(err.message || "Could not process PDF.");
+    } finally {
+      setSyllabusLoading(false);
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer?.files?.[0];
+    if (file && file.type === "application/pdf") processPdfFile(file);
+    else if (file) setSyllabusError("Please drop a PDF file.");
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+    setDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setDragOver(false);
   }
 
   function setGoal(e) {
@@ -236,12 +315,20 @@ export function StatsPage() {
                   const suggested = suggestedMinutes(days);
                   return (
                     <li key={exam.id} className="stats-exam-item">
-                      <div className="stats-exam-main">
-                        <span className="stats-exam-name">{exam.name}</span>
-                        <span className="stats-exam-days">{days} {days === 1 ? "day" : "days"} left</span>
+                      <div
+                        className="stats-exam-clickable"
+                        onClick={() => setSelectedExam(exam)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => e.key === "Enter" && setSelectedExam(exam)}
+                      >
+                        <div className="stats-exam-main">
+                          <span className="stats-exam-name">{exam.name}</span>
+                          <span className="stats-exam-days">{days} {days === 1 ? "day" : "days"} left</span>
+                        </div>
+                        <p className="stats-exam-tip">Aim for ~{suggested} min this week (spaced practice)</p>
                       </div>
-                      <p className="stats-exam-tip">Aim for ~{suggested} min this week (spaced practice)</p>
-                      <button type="button" className="stats-exam-remove" onClick={() => dispatch({ type: "REMOVE_EXAM", payload: exam.id })} aria-label="Remove">×</button>
+                      <button type="button" className="stats-exam-remove" onClick={(e) => { e.stopPropagation(); dispatch({ type: "REMOVE_EXAM", payload: exam.id }); }} aria-label="Remove">×</button>
                     </li>
                   );
                 })}
@@ -251,41 +338,160 @@ export function StatsPage() {
               </button>
             </>
           ) : (
-            <button type="button" className="muted-button stats-exam-add" onClick={() => setShowAddExam(true)}>
-              Add an exam to get study reminders
+            <button type="button" className="muted-button stats-exam-add stats-exam-add-cta" onClick={() => setShowAddExam(true)}>
+              Add exam for study reminders
             </button>
           )}
         </section>
 
         {showAddExam && (
           <div className="exam-add-modal">
-            <div className="exam-add-backdrop" onClick={() => setShowAddExam(false)} />
+            <div className="exam-add-backdrop" onClick={closeExamModal} />
             <div className="exam-add-dialog">
               <h2 className="exam-add-title">Add exam</h2>
-              <form onSubmit={addExam} className="exam-add-form">
-                <input
-                  type="text"
-                  placeholder="Exam name (e.g. CS midterm)"
-                  value={examName}
-                  onChange={(e) => setExamName(e.target.value)}
-                  className="exam-add-input"
-                  autoFocus
-                />
-                <input
-                  type="date"
-                  value={examDate}
-                  onChange={(e) => setExamDate(e.target.value)}
-                  className="exam-add-input"
-                  required
-                />
-                <div className="exam-add-actions">
-                  <button type="submit" className="primary-button">Add</button>
-                  <button type="button" className="muted-button" onClick={() => setShowAddExam(false)}>Cancel</button>
+
+              {addExamMode === "choice" && (
+                <div className="exam-add-choice">
+                  <button
+                    type="button"
+                    className="primary-button exam-add-choice-btn"
+                    onClick={() => setAddExamMode("manual")}
+                  >
+                    Add manually
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-outline-button exam-add-choice-btn"
+                    onClick={() => setAddExamMode("syllabus")}
+                  >
+                    Upload syllabus PDF
+                  </button>
+                  <p className="exam-add-choice-hint">Upload your syllabus and we&apos;ll extract exam dates automatically.</p>
+                  <button type="button" className="muted-button exam-add-choice-cancel" onClick={closeExamModal}>
+                    Cancel
+                  </button>
                 </div>
-              </form>
+              )}
+
+              {addExamMode === "manual" && (
+                <form onSubmit={addExam} className="exam-add-form">
+                  <input
+                    type="text"
+                    placeholder="Exam name (e.g. CS midterm)"
+                    value={examName}
+                    onChange={(e) => setExamName(e.target.value)}
+                    className="exam-add-input"
+                    autoFocus
+                  />
+                  <input
+                    type="date"
+                    value={examDate}
+                    onChange={(e) => setExamDate(e.target.value)}
+                    className="exam-add-input"
+                    required
+                  />
+                  <div className="exam-add-actions">
+                    <button type="submit" className="primary-button">Add</button>
+                    <button type="button" className="muted-button" onClick={() => setAddExamMode("choice")}>Back</button>
+                  </div>
+                </form>
+              )}
+
+              {addExamMode === "syllabus" && (
+                <div className="exam-add-form">
+                  <label className="exam-add-label">Upload syllabus PDF</label>
+                  <div
+                    className={`exam-add-dropzone ${dragOver ? "drag-over" : ""}`}
+                    onDrop={handleDrop}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      className="exam-add-file-input-hidden"
+                      onChange={(e) => {
+                        setSyllabusError("");
+                        const f = e.target?.files?.[0];
+                        if (f) processPdfFile(f);
+                      }}
+                    />
+                    <p className="exam-add-drop-text">Drop PDF here or click to upload</p>
+                  </div>
+                  <div className="exam-add-actions">
+                    <button type="button" className="primary-button" onClick={() => fileInputRef.current?.click()} disabled={syllabusLoading}>
+                      {syllabusLoading ? "Extracting..." : "Choose file"}
+                    </button>
+                    <button type="button" className="muted-button" onClick={() => { setAddExamMode("choice"); setSyllabusError(""); }}>
+                      Back
+                    </button>
+                  </div>
+                  {syllabusError && <p className="exam-add-error">{syllabusError}</p>}
+                </div>
+              )}
             </div>
           </div>
         )}
+
+        {selectedExam && (() => {
+          const exam = exams.find((e) => e.id === selectedExam.id) || selectedExam;
+          const topics = exam.topics?.length ? exam.topics : getDefaultStudyTopics(exam.name);
+          const closeModal = () => {
+            setSelectedExam(null);
+            setExamTip("");
+          };
+          const handleGetTip = async () => {
+            setExamTipLoading(true);
+            setExamTip("");
+            try {
+              const tip = await getExamStudyTip(exam.name, daysUntil(exam.date), topics.map((t) => t.text));
+              setExamTip(tip);
+            } catch {
+              setExamTip("Focus on active recall—test yourself instead of just rereading.");
+            } finally {
+              setExamTipLoading(false);
+            }
+          };
+          return (
+            <div className="exam-detail-modal">
+              <div className="exam-detail-backdrop" onClick={closeModal} />
+              <div className="exam-detail-dialog">
+                <div className="exam-detail-header">
+                  <h2 className="exam-detail-title">{exam.name}</h2>
+                  <button type="button" className="exam-detail-close" onClick={closeModal} aria-label="Close">×</button>
+                </div>
+                <p className="exam-detail-date">
+                  {daysUntil(exam.date)} {daysUntil(exam.date) === 1 ? "day" : "days"} left
+                </p>
+                <button type="button" className="exam-detail-tip-btn" onClick={handleGetTip} disabled={examTipLoading}>
+                  {examTipLoading ? "Getting tip…" : "💡 Get a study tip"}
+                </button>
+                {examTip && <p className="exam-detail-tip-text">{examTip}</p>}
+                <h3 className="exam-detail-subtitle">Study to-do</h3>
+                <ul className="exam-detail-todos">
+                  {topics.map((topic) => (
+                    <li key={topic.id} className="exam-detail-todo-item">
+                      <label className="exam-detail-todo-label">
+                        <input
+                          type="checkbox"
+                          checked={!!exam.todosCompleted?.[topic.id]}
+                          onChange={() => dispatch({ type: "TOGGLE_EXAM_TODO", payload: { examId: exam.id, topicId: topic.id } })}
+                          className="exam-detail-todo-checkbox"
+                        />
+                        <span className={exam.todosCompleted?.[topic.id] ? "exam-detail-todo-done" : ""}>
+                          {topic.text}
+                          {topic.recommended && <span className="exam-detail-todo-recommended"> (recommended)</span>}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          );
+        })()}
 
         <section className="stats-summary">
           <div className="stats-card stats-card-highlight">
