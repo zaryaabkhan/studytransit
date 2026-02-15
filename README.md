@@ -252,8 +252,4 @@ cd react-app
 npm run build
 ```
 
----
 
-## License
-
-MIT
