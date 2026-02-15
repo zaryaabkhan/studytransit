@@ -76,11 +76,16 @@ export function HomePage() {
       const occupancyPct = occupancy.totalCapacity
         ? Math.round((occupancy.totalCounter / occupancy.totalCapacity) * 100)
         : null;
+      const opennessRatio =
+        occupancy.totalCapacity > 0 && occupancy.totalCounter > 0
+          ? occupancy.totalCapacity / occupancy.totalCounter
+          : null;
       map.set(lib.id, {
         avg,
         count,
         openSeats,
         occupancyPct,
+        opennessRatio,
         todayCount: occupancy.todayCount,
         bestSpace: occupancy.bestSpace,
       });
@@ -93,8 +98,8 @@ export function HomePage() {
       .map((lib) => ({ library: lib, stats: libraryStats.get(lib.id) }))
       .filter((entry) => entry.stats);
     const mostOpenLibrary = statsEntries
-      .filter((entry) => entry.stats.occupancyPct != null)
-      .sort((a, b) => a.stats.occupancyPct - b.stats.occupancyPct)[0];
+      .filter((entry) => entry.stats.opennessRatio != null)
+      .sort((a, b) => a.stats.opennessRatio - b.stats.opennessRatio)[0];
     return {
       mostOpenLibrary,
     };
