@@ -7,6 +7,7 @@ import { LockPage } from "./pages/LockPage.jsx";
 import { DiscoverPage } from "./pages/DiscoverPage.jsx";
 import { StatsPage } from "./pages/StatsPage.jsx";
 import { FooterNav } from "./components/FooterNav.jsx";
+import FirebaseUtilityTest from "./firebase/FirebaseUtilityTest.jsx";
 
 function AppShell({ children }) {
   return (
@@ -58,6 +59,14 @@ export default function App() {
           element={
             <AppShell>
               <StatsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/firebase-test"
+          element={
+            <AppShell>
+              <FirebaseUtilityTest />
             </AppShell>
           }
         />

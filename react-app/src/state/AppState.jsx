@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useReducer } from "react";
-import { fetchLibrariesAndSpacesFromFirebase } from "../services/firebase.js";
+import { fetchAllLibraries , fetchAllSpacesFromLibrary} from "../firebase/firebase_utility.jsx";
 
-// Fallback: Columbia University libraries and study spaces (used when Firebase is not configured or fetch fails)
+// All Columbia University libraries and study spaces (from library.columbia.edu)
 const initialLibraries = [
   { id: "lib-1", name: "Butler Library", location: "535 W 114th St" },
   { id: "lib-2", name: "Avery Architectural & Fine Arts", location: "Avery Hall" },
@@ -54,6 +54,18 @@ const STORAGE_KEY_EXAMS = "lionstudy_exams";
 
 const AppStateContext = createContext(null);
 
+/** Normalize Firebase space (id + room_data) to app shape (id, libraryId, name, capacity). */
+function normalizeSpace(raw, libraryId) {
+  const rd = raw.room_data || {};
+  return {
+    id: raw.id,
+    libraryId,
+    name: rd.space_name ?? "Space",
+    capacity: Number(rd.space_capacity) || 0,
+    room_data: rd,
+  };
+}
+
 function loadFromStorage(key, fallback, altKey) {
   try {
     let raw = window.localStorage.getItem(key);
@@ -67,8 +79,8 @@ function loadFromStorage(key, fallback, altKey) {
 }
 
 const initialState = {
-  libraries: initialLibraries,
-  spaces: initialSpaces,
+  libraries: [],
+  spacesByLibraryId: {},
   ratings: [],
   focusSessions: [],
   weeklyGoalMinutes: 300,
@@ -77,6 +89,22 @@ const initialState = {
 
 function reducer(state, action) {
   switch (action.type) {
+    case "SET_LIBRARIES": {
+      const libs = (action.payload || []).map((l) => ({
+        id: l.id,
+        name: l.library_name ?? l.name ?? "",
+        location: l.location ?? "",
+      }));
+      return { ...state, libraries: libs };
+    }
+    case "SET_SPACES_FOR_LIBRARY": {
+      const { libraryId, spaces } = action.payload || {};
+      if (!libraryId) return state;
+      return {
+        ...state,
+        spacesByLibraryId: { ...state.spacesByLibraryId, [libraryId]: spaces || [] },
+      };
+    }
     case "INIT_FROM_STORAGE": {
       return {
         ...state,
@@ -117,10 +145,11 @@ function reducer(state, action) {
       return { ...state, exams: state.exams.filter((e) => e.id !== action.payload) };
     }
     case "ADD_RATING": {
-      const { spaceId, value, timestamp } = action.payload;
+      const { spaceId, libraryId, value, timestamp } = action.payload;
       const rating = {
         id: `rating-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         spaceId,
+        ...(libraryId != null && { libraryId }),
         value,
         createdAt: timestamp || new Date().toISOString(),
       };
@@ -176,15 +205,28 @@ export function AppStateProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState);
 
   useEffect(() => {
-    fetchLibrariesAndSpacesFromFirebase().then((result) => {
-      if (result) {
-        dispatch({
-          type: "SET_LIBRARIES_AND_SPACES",
-          payload: { libraries: result.libraries, spaces: result.spaces },
-        });
-      }
-    });
+    let cancelled = false;
+    fetchAllLibraries()
+      .then((libs) => {
+        if (!cancelled) dispatch({ type: "SET_LIBRARIES", payload: libs });
+      })
+      .catch((err) => console.error("Failed to fetch libraries:", err));
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!state.libraries.length) return;
+    const byId = state.spacesByLibraryId || {};
+    state.libraries.forEach((lib) => {
+      if (byId[lib.id]) return;
+      fetchAllSpacesFromLibrary(lib.id)
+        .then((rawSpaces) => {
+          const spaces = rawSpaces.map((s) => normalizeSpace(s, lib.id));
+          dispatch({ type: "SET_SPACES_FOR_LIBRARY", payload: { libraryId: lib.id, spaces } });
+        })
+        .catch((err) => console.error(`Failed to fetch spaces for ${lib.id}:`, err));
+    });
+  }, [state.libraries]);
 
   useEffect(() => {
     const ratings = loadFromStorage(STORAGE_KEY_RATINGS, [], "studytransit_ratings");
@@ -234,12 +276,17 @@ export function AppStateProvider({ children }) {
     }
   }, [state.exams]);
 
+  const allSpaces = useMemo(
+    () => Object.values(state.spacesByLibraryId || {}).flat(),
+    [state.spacesByLibraryId]
+  );
+
   const value = useMemo(
     () => ({
-      state,
+      state: { ...state, allSpaces },
       dispatch,
     }),
-    [state]
+    [state, allSpaces]
   );
 
   return <AppStateContext.Provider value={value}>{children}</AppStateContext.Provider>;
@@ -254,10 +301,22 @@ export function useAppState() {
 }
 
 export function useLibraryWithSpaces(libraryId) {
-  const {
-    state: { libraries, spaces },
-  } = useAppState();
+  const { state, dispatch } = useAppState();
+  const { libraries, spacesByLibraryId } = state;
   const library = libraries.find((l) => l.id === libraryId);
-  const librarySpaces = spaces.filter((s) => s.libraryId === libraryId);
-  return { library, spaces: librarySpaces };
+  const spaces = spacesByLibraryId?.[libraryId] ?? [];
+
+  useEffect(() => {
+    if (!libraryId || !library || spacesByLibraryId?.[libraryId] !== undefined) return;
+    let cancelled = false;
+    fetchAllSpacesFromLibrary(libraryId)
+      .then((rawSpaces) => {
+        if (!cancelled)
+          dispatch({ type: "SET_SPACES_FOR_LIBRARY", payload: { libraryId, spaces: rawSpaces.map((s) => normalizeSpace(s, libraryId)) } });
+      })
+      .catch((err) => console.error(`Failed to fetch spaces for ${libraryId}:`, err));
+    return () => { cancelled = true; };
+  }, [libraryId, library, spacesByLibraryId]);
+
+  return { library, spaces };
 }

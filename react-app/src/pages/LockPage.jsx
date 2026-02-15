@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useAppState } from "../state/AppState.jsx";
 import { getSessionCoachingSummary } from "../services/aiClient.js";
+import {
+  fetchAllSpacesFromLibrary,
+  updateSpaceCapacityAndCounter,
+} from "../firebase/firebase_utility.jsx";
 
 export function LockPage() {
   const {
-    state: { spaces, libraries },
+    state: { allSpaces = [], libraries },
     dispatch,
   } = useAppState();
 
@@ -133,14 +137,57 @@ export function LockPage() {
     return "Nice work! Your focus session is complete—take a short break before deciding what’s next.";
   }
 
-  function startTimer() {
+  async function startTimer() {
     if (timerState === "running") return;
     if (!selectedSpaceId) return;
     if (intervalRef.current) clearInterval(intervalRef.current);
 
+    const [libraryId, spaceId] = selectedSpaceId.includes(":")
+      ? selectedSpaceId.split(":", 2)
+      : [undefined, selectedSpaceId];
+
+    if (libraryId && spaceId) {
+      try {
+        const selectedSpace = allSpaces.find(
+          (space) => space.id === spaceId && space.libraryId === libraryId
+        );
+        const incrementBy = Number(rating) || 0;
+        const currentCapacity = Number(selectedSpace?.room_data?.space_capacity) || 0;
+        const currentCounter = Number(selectedSpace?.room_data?.space_counter) || 0;
+
+        await updateSpaceCapacityAndCounter(libraryId, spaceId, {
+          space_capacity: currentCapacity + incrementBy,
+          space_counter: currentCounter + 1,
+        });
+
+        const refreshedRawSpaces = await fetchAllSpacesFromLibrary(libraryId);
+        const refreshedSpaces = refreshedRawSpaces.map((raw) => {
+          const roomData = raw.room_data || {};
+          return {
+            id: raw.id,
+            libraryId,
+            name: roomData.space_name ?? "Space",
+            capacity: Number(roomData.space_capacity) || 0,
+            room_data: roomData,
+          };
+        });
+        dispatch({
+          type: "SET_SPACES_FOR_LIBRARY",
+          payload: { libraryId, spaces: refreshedSpaces },
+        });
+      } catch (err) {
+        console.error("Failed to increment space counters:", err);
+      }
+    }
+
     dispatch({
       type: "ADD_RATING",
-      payload: { spaceId: selectedSpaceId, value: Number(rating), timestamp: new Date().toISOString() },
+      payload: {
+        spaceId,
+        ...(libraryId && { libraryId }),
+        value: Number(rating),
+        timestamp: new Date().toISOString(),
+      },
     });
 
     setTimerState("running");
@@ -182,7 +229,7 @@ export function LockPage() {
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference * (1 - Math.min(Math.max(progress, 0), 1));
 
-  const sortedSpaces = spaces
+  const sortedSpaces = (allSpaces || [])
     .map((s) => ({
       ...s,
       libraryName: libraries.find((l) => l.id === s.libraryId)?.name || "",
@@ -288,7 +335,9 @@ export function LockPage() {
                     return (
                       <optgroup key={lib.id} label={lib.name}>
                         {libSpaces.map((s) => (
-                          <option key={s.id} value={s.id}>{s.name}</option>
+                          <option key={`${s.libraryId}:${s.id}`} value={`${s.libraryId}:${s.id}`}>
+                            {s.name}
+                          </option>
                         ))}
                       </optgroup>
                     );
@@ -387,4 +436,3 @@ export function LockPage() {
     </div>
   );
 }
-

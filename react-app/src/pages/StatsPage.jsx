@@ -557,15 +557,6 @@ export function StatsPage() {
         </section>
 
         <section className="stats-section">
-          {recentCompleted.length === 0 && (
-            <button
-              type="button"
-              className="muted-button stats-demo-btn"
-              onClick={() => dispatch({ type: "SEED_DEMO_DATA" })}
-            >
-              Load demo data (for judges)
-            </button>
-          )}
           <h2 className="stats-section-title">AI study coach</h2>
           <ul className="stats-list">
             {coachingTips.length === 0 ? (

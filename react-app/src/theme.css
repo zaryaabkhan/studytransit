@@ -2,15 +2,19 @@
    Columbia Primary Blue, Columbia Blue, Secondary Blues */
 
 :root {
-  --primary: #1D4F91;
-  --primary-light: #6CACE4;
-  --primary-dark: #003087;
-  --accent: #0077C8;
-  --accent-light: #B9D9EB;
+  --primary: #6cace4;
+  --primary-light: #8fc2ec;
+  --primary-dark: #4a90c2;
+  --accent: #1d4f91;
+  --accent-light: #dcebf8;
   --surface: #ffffff;
   --surface-warm: #f8fafc;
   --ink: #0f172a;
   --ink-muted: #475569;
-  --primary-rgb: 29, 79, 145;
-  --accent-rgb: 0, 119, 200;
+  --primary-rgb: 108, 172, 228;
+  --accent-rgb: 29, 79, 145;
+  --occupancy-empty: #e2e8f0;
+  --occupancy-low: #0d9488;
+  --occupancy-mid: #d97706;
+  --occupancy-high: #b91c1c;
 }

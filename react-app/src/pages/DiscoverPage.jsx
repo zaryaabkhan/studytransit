@@ -17,7 +17,7 @@ export function DiscoverPage() {
   const [aiError, setAiError] = useState("");
 
   const {
-    state: { spaces, libraries, ratings },
+    state: { allSpaces = [], libraries, ratings },
   } = useAppState();
 
   const prefs = useMemo(
@@ -36,16 +36,17 @@ export function DiscoverPage() {
   const ratingSummaryBySpace = useMemo(() => {
     const map = new Map();
     ratings.forEach((r) => {
-      const entry = map.get(r.spaceId) || { sum: 0, count: 0, last: null };
+      const key = r.libraryId ? `${r.libraryId}:${r.spaceId}` : r.spaceId;
+      const entry = map.get(key) || { sum: 0, count: 0, last: null };
       entry.sum += Number(r.value || 0);
       entry.count += 1;
       entry.last = r;
-      map.set(r.spaceId, entry);
+      map.set(key, entry);
     });
     const result = new Map();
-    map.forEach((entry, spaceId) => {
+    map.forEach((entry, key) => {
       const avg = entry.count ? Math.round((entry.sum / entry.count) * 100) / 100 : null;
-      result.set(spaceId, { avg, last: entry.last });
+      result.set(key, { avg, last: entry.last });
     });
     return result;
   }, [ratings]);
@@ -74,7 +75,7 @@ export function DiscoverPage() {
         duration: Number(form.duration) || 60,
         query: form.q.trim(),
       };
-      const results = await getAISpaceRecommendations(prefs, spaces, libraries);
+      const results = await getAISpaceRecommendations(prefs, allSpaces, libraries);
       setAiSuggestions(Array.isArray(results) ? results : []);
       setTimeout(() => aiResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (err) {
@@ -274,7 +275,8 @@ export function DiscoverPage() {
               <h2 className="discover-results-title">Top matches right now</h2>
               <ul className="discover-result-list">
                 {recommendations.map((rec) => {
-                  const summary = ratingSummaryBySpace.get(rec.space.id) || { avg: null, last: null };
+                  const spaceKey = rec.space.libraryId ? `${rec.space.libraryId}:${rec.space.id}` : rec.space.id;
+                  const summary = ratingSummaryBySpace.get(spaceKey) || { avg: null, last: null };
                   const avg = summary.avg;
                   const last = summary.last;
                   const library = libraries.find((l) => l.id === rec.space.libraryId);
