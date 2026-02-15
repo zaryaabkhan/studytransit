@@ -251,6 +251,13 @@ body,
   font-size: 0.95rem;
 }
 
+.stats-exam-type {
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  text-transform: capitalize;
+  margin: 0.2rem 0 0;
+}
+
 .stats-exam-tip {
   font-size: 0.8rem;
   color: var(--ink-muted);
@@ -545,6 +552,13 @@ body,
   font-weight: 700;
   color: var(--primary);
   margin: 0;
+}
+
+.exam-detail-type {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  text-transform: capitalize;
+  margin: 0.25rem 0 0;
 }
 
 .exam-detail-close {

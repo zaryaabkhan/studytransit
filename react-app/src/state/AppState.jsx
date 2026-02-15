@@ -83,7 +83,7 @@ const initialState = {
   spacesByLibraryId: {},
   ratings: [],
   focusSessions: [],
-  weeklyGoalMinutes: 300,
+  weeklyGoalMinutes: 2400,
   exams: [],
 };
 
@@ -110,7 +110,7 @@ function reducer(state, action) {
         ...state,
         ratings: action.payload.ratings,
         focusSessions: action.payload.focusSessions,
-        weeklyGoalMinutes: action.payload.weeklyGoalMinutes ?? 300,
+        weeklyGoalMinutes: action.payload.weeklyGoalMinutes ?? 2400,
         exams: action.payload.exams ?? [],
       };
     }
@@ -232,7 +232,7 @@ export function AppStateProvider({ children }) {
     const ratings = loadFromStorage(STORAGE_KEY_RATINGS, [], "studytransit_ratings");
     const sessions = loadFromStorage(STORAGE_KEY_SESSIONS, [], "studytransit_focus_sessions");
     const goals = window.localStorage.getItem(STORAGE_KEY_GOALS);
-    const weeklyGoal = goals ? parseInt(goals, 10) : 300;
+    const weeklyGoal = goals ? parseInt(goals, 10) : 2400;
     const examsRaw = window.localStorage.getItem(STORAGE_KEY_EXAMS);
     let exams = [];
     try {

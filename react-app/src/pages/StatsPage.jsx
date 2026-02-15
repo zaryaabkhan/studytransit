@@ -227,13 +227,14 @@ export function StatsPage() {
         return;
       }
       const firstExam = parsedExams[0];
-      const topics = await extractSyllabusTopics(text, firstExam.name);
+      const topics = await extractSyllabusTopics(text, `${firstExam.subject} ${firstExam.type}`);
       parsedExams.forEach((ex) => {
         dispatch({
           type: "ADD_EXAM",
           payload: {
-            name: ex.name,
+            name: ex.subject,
             date: ex.date,
+            type: ex.type,
             topics,
             todosCompleted: {},
           },
@@ -267,8 +268,8 @@ export function StatsPage() {
   function setGoal(e) {
     e.preventDefault();
     const val = parseInt(goalInput, 10);
-    if (val >= 30 && val <= 600) {
-      dispatch({ type: "SET_WEEKLY_GOAL", payload: val });
+    if (val >= 1 && val <= 168) {
+      dispatch({ type: "SET_WEEKLY_GOAL", payload: val * 60 });
       setGoalInput("");
     }
   }
@@ -326,6 +327,9 @@ export function StatsPage() {
                           <span className="stats-exam-name">{exam.name}</span>
                           <span className="stats-exam-days">{days} {days === 1 ? "day" : "days"} left</span>
                         </div>
+                        {exam.type && (
+                          <p className="stats-exam-type">{exam.type.charAt(0).toUpperCase() + exam.type.slice(1)}</p>
+                        )}
                         <p className="stats-exam-tip">Aim for ~{suggested} min this week (spaced practice)</p>
                       </div>
                       <button type="button" className="stats-exam-remove" onClick={(e) => { e.stopPropagation(); dispatch({ type: "REMOVE_EXAM", payload: exam.id }); }} aria-label="Remove">×</button>
@@ -459,7 +463,12 @@ export function StatsPage() {
               <div className="exam-detail-backdrop" onClick={closeModal} />
               <div className="exam-detail-dialog">
                 <div className="exam-detail-header">
-                  <h2 className="exam-detail-title">{exam.name}</h2>
+                  <div>
+                    <h2 className="exam-detail-title">{exam.name}</h2>
+                    {exam.type && (
+                      <p className="exam-detail-type">{exam.type.charAt(0).toUpperCase() + exam.type.slice(1)}</p>
+                    )}
+                  </div>
                   <button type="button" className="exam-detail-close" onClick={closeModal} aria-label="Close">×</button>
                 </div>
                 <p className="exam-detail-date">
@@ -517,21 +526,21 @@ export function StatsPage() {
             <div className="stats-goal-fill" style={{ width: `${goalProgress}%` }} />
           </div>
           <p className="stats-goal-text">
-            {weeklyMinutes} / {weeklyGoalMinutes} min
+            {Math.round(weeklyMinutes / 60)} / {Math.round(weeklyGoalMinutes / 60)} hours
           </p>
           <form onSubmit={setGoal} className="stats-goal-form">
             <input
               type="number"
-              min={30}
-              max={600}
-              step={30}
-              placeholder="Set goal (e.g. 300)"
+              min={1}
+              max={168}
+              step={1}
+              placeholder="Set goal (e.g. 40)"
               value={goalInput}
               onChange={(e) => setGoalInput(e.target.value)}
               className="stats-goal-input"
             />
             <button type="submit" className="primary-button stats-goal-btn">
-              Set weekly goal (min)
+              Set weekly goal (hours)
             </button>
           </form>
         </section>

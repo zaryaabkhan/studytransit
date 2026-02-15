@@ -220,22 +220,27 @@ export async function getAISpaceRecommendations(preferences, spaces, libraries) 
       const spaceList = spaces
         .map((s) => {
           const lib = libraries.find((l) => l.id === s.libraryId);
-          return `${s.name} (${lib?.name ?? "Library"})`;
+          const cap = s.capacity != null ? `capacity ${s.capacity}` : "";
+          const extras = [cap, s.room_data?.space_type, s.room_data?.features]
+            .filter(Boolean)
+            .join(", ");
+          return `${s.name} @ ${lib?.name ?? "Library"}${extras ? ` (${extras})` : ""}`;
         })
         .join("\n");
 
-      const content = `Student preferences:\n${JSON.stringify(preferences, null, 2)}\n\nAvailable spaces:\n${spaceList}\n\nReturn 3-5 space names (exact match) as a JSON array of objects: [{"space": "Space Name", "library": "Library Name", "reason": "one sentence why"}]`;
+      const content = `Student preferences:\n${JSON.stringify(preferences, null, 2)}\n\nAvailable spaces (name @ library, with details):\n${spaceList}\n\nNoise options: silent, busy, background buzz. Intensity: deep, steady, social.\n\nReturn 3-5 spaces as a JSON array: [{"space": "exact space name", "library": "exact library name", "reason": "One concrete sentence tailored to THIS specific space and library—mention the space type, library character, or layout. Not generic."}]`;
 
       const result = await callChat(
         [
           {
             role: "system",
             content:
-              "You are a study space advisor for university students. Recommend 3-5 spaces from the list that best match the student's preferences. Return only valid JSON array.",
+              "You are a study space advisor for university students. Recommend 3-5 spaces that best match preferences. " +
+              "For each space, write a personalized reason that references that specific room, library, and layout—e.g. 'Room 301 at Butler is a designated quiet room ideal for exam prep' or 'The Main Reading Room at Avery has natural light and suits steady reading.' Never give generic reasons. Return only valid JSON array.",
           },
           { role: "user", content },
         ],
-        { temperature: 0.5, maxTokens: 500 }
+        { temperature: 0.5, maxTokens: 600 }
       );
       if (result) {
         try {
@@ -252,24 +257,26 @@ export async function getAISpaceRecommendations(preferences, spaces, libraries) 
     }
   }
 
-  // Demo: return rule-based matches from spaces
-  const { intensity = "steady", noise = "quiet", query = "" } = preferences;
+  // Demo: return rule-based matches with space-specific reasons
+  const { intensity = "steady", noise = "busy", query = "" } = preferences;
   const q = (query || "").toLowerCase();
   const filtered = spaces.filter((s) => {
     const name = (s.name || "").toLowerCase();
-    const lib = libraries.find((l) => l.id === s.libraryId);
-    const libName = (lib?.name || "").toLowerCase();
     if (q.match(/quiet|silent|focus/)) return name.includes("quiet") || name.includes("room");
-    if (q.match(/group|social/)) return name.includes("group") || name.includes("main");
+    if (q.match(/group|social|busy/)) return name.includes("group") || name.includes("main");
     return true;
   });
+  const noiseLabel = noise === "silent" ? "quiet focus" : noise === "buzz" ? "background buzz" : "busy productive vibe";
   return filtered.slice(0, 5).map((s) => {
     const lib = libraries.find((l) => l.id === s.libraryId);
-    return {
-      space: s.name,
-      library: lib?.name ?? "Library",
-      reason: `${lib?.name} – ${s.name} matches your ${intensity} work style and ${noise} preference.`,
-    };
+    const isQuiet = (s.name || "").toLowerCase().includes("quiet");
+    const isGroup = (s.name || "").toLowerCase().includes("group");
+    let reason = `${lib?.name ?? "Library"} – ${s.name}`;
+    if (isQuiet) reason += " is a designated quiet space";
+    else if (isGroup) reason += " works well for groups and collaboration";
+    else reason += " offers a balanced study environment";
+    reason += `, ideal for ${intensity} work with a ${noiseLabel}.`;
+    return { space: s.name, library: lib?.name ?? "Library", reason };
   });
 }
 
@@ -302,7 +309,7 @@ export async function getWeeklyStudyInsights(summary) {
 
 /**
  * Parse a syllabus (text) and extract exam/midterm dates using Claude.
- * Returns array of { name: string, date: string (YYYY-MM-DD) } or empty array.
+ * Returns array of { subject: string, type: "midterm"|"final", date: string (YYYY-MM-DD) } or empty array.
  */
 export async function parseSyllabusExams(syllabusText) {
   const apiKey = getApiKey();
@@ -317,7 +324,7 @@ export async function parseSyllabusExams(syllabusText) {
         content:
           "You extract exam and midterm dates from course syllabi. " +
           "Return ONLY a valid JSON array of objects, no other text. " +
-          "Each object must have: name (string, e.g. 'Midterm 1' or 'CS 101 Final'), date (string in YYYY-MM-DD format). " +
+          "Each object must have: subject (string, course name or code, e.g. 'CS 101' or 'Introduction to Biology'), type (string, either 'midterm' or 'final'), date (string in YYYY-MM-DD format). " +
           "Use the current year for dates if only month/day given. Infer dates from context (e.g. 'Week 6' = approximate). " +
           "Skip assignment due dates; focus on exams, midterms, finals. If no exams found, return [].",
       },
@@ -339,11 +346,15 @@ export async function parseSyllabusExams(syllabusText) {
       const parsed = JSON.parse(match[0]);
       if (!Array.isArray(parsed)) return [];
       return parsed
-        .filter((x) => x && typeof x.name === "string" && x.date)
-        .map((x) => ({
-          name: String(x.name).trim(),
-          date: String(x.date).trim().slice(0, 10),
-        }))
+        .filter((x) => x && typeof x.subject === "string" && x.date)
+        .map((x) => {
+          const type = String(x.type || "").toLowerCase();
+          return {
+            subject: String(x.subject).trim(),
+            type: type === "final" ? "final" : "midterm",
+            date: String(x.date).trim().slice(0, 10),
+          };
+        })
         .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x.date));
     }
   } catch {

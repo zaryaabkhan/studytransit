@@ -52,7 +52,7 @@ function normalizePreferences(prefs) {
   if (q) {
     if (!parsed.noise) {
       if (q.match(/silent|very quiet|silent floor/)) parsed.noise = "silent";
-      else if (q.match(/quiet|focus|concentrate/)) parsed.noise = "quiet";
+      else if (q.match(/busy|moderate|moderate noise/)) parsed.noise = "busy";
       else if (q.match(/chatty|group|collab|social|buzz/)) parsed.noise = "buzz";
     }
 
@@ -99,7 +99,7 @@ function computeScore(space, avg, prefs) {
 
   let noiseBonus = 0;
   if (noise === "silent") noiseBonus = (5 - avg) * 0.6;
-  else if (noise === "quiet") noiseBonus = (5 - avg) * 0.4;
+  else if (noise === "busy") noiseBonus = Math.abs(avg - 3) < 1.5 ? 0.5 : 0;
   else if (noise === "buzz") noiseBonus = (avg - 2.5) * 0.2;
 
   const durationFactor = durationMinutes / 60;
@@ -135,7 +135,7 @@ function buildReason(space, avg, prefs, libraries, isUnrated) {
 
   let noisePhrase = "balanced for most study styles";
   if (noise === "silent") noisePhrase = "suited to very quiet sessions";
-  else if (noise === "quiet") noisePhrase = "good for a quiet atmosphere";
+  else if (noise === "busy") noisePhrase = "good when you want a busy, productive vibe";
   else if (noise === "buzz") noisePhrase = "better if you don't mind some background buzz";
 
   let durationPhrase = "solid work block";

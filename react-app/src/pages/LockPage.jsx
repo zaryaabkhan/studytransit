@@ -41,10 +41,11 @@ export function LockPage() {
 
   function configureSession() {
     const now = new Date();
+    const durationMinutes = duration === 10 ? 10 : duration / 60;
     sessionRef.current = {
       id: `session-${now.getTime()}`,
       started_at: now.toISOString(),
-      duration_minutes: duration / 60,
+      duration_minutes: durationMinutes,
       task: taskType || null,
       energy: energy || null,
       completed: false,

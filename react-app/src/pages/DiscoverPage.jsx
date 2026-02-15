@@ -1,72 +1,36 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAppState } from "../state/AppState.jsx";
-import { useSpaceRecommendations } from "../hooks/useRecommender.js";
 import { getAISpaceRecommendations } from "../services/aiClient.js";
 
 export function DiscoverPage() {
   const [form, setForm] = useState({
     intensity: "steady",
-    noise: "quiet",
+    noise: "busy",
     groupSize: 1,
     duration: 60,
     q: "",
   });
-  const [aiSuggestions, setAiSuggestions] = useState([]);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState("");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const {
-    state: { allSpaces = [], libraries, ratings },
+    state: { allSpaces = [], libraries },
   } = useAppState();
-
-  const prefs = useMemo(
-    () => ({
-      intensity: form.intensity,
-      noise: form.noise,
-      groupSize: form.groupSize,
-      duration: form.duration,
-      query: form.q,
-    }),
-    [form]
-  );
-
-  const recommendations = useSpaceRecommendations(prefs);
-
-  const ratingSummaryBySpace = useMemo(() => {
-    const map = new Map();
-    ratings.forEach((r) => {
-      const key = r.libraryId ? `${r.libraryId}:${r.spaceId}` : r.spaceId;
-      const entry = map.get(key) || { sum: 0, count: 0, last: null };
-      entry.sum += Number(r.value || 0);
-      entry.count += 1;
-      entry.last = r;
-      map.set(key, entry);
-    });
-    const result = new Map();
-    map.forEach((entry, key) => {
-      const avg = entry.count ? Math.round((entry.sum / entry.count) * 100) / 100 : null;
-      result.set(key, { avg, last: entry.last });
-    });
-    return result;
-  }, [ratings]);
 
   function handleChange(e) {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
   }
 
-  function handleSubmit(e) {
+  const resultsRef = React.useRef(null);
+
+  async function handleFindSpot(e) {
     e.preventDefault();
-    // Recommendations recompute automatically via hook.
-  }
-
-  const aiResultsRef = React.useRef(null);
-
-  async function handleAISuggestions() {
-    setAiLoading(true);
-    setAiError("");
-    setAiSuggestions([]);
+    setLoading(true);
+    setError("");
+    setResults([]);
     try {
       const prefs = {
         intensity: form.intensity,
@@ -75,13 +39,13 @@ export function DiscoverPage() {
         duration: Number(form.duration) || 60,
         query: form.q.trim(),
       };
-      const results = await getAISpaceRecommendations(prefs, allSpaces, libraries);
-      setAiSuggestions(Array.isArray(results) ? results : []);
-      setTimeout(() => aiResultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+      const aiResults = await getAISpaceRecommendations(prefs, allSpaces, libraries);
+      setResults(Array.isArray(aiResults) ? aiResults : []);
+      setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
     } catch (err) {
-      setAiError(err.message || "Could not get AI suggestions.");
+      setError(err.message || "Could not find spots.");
     } finally {
-      setAiLoading(false);
+      setLoading(false);
     }
   }
 
@@ -95,7 +59,7 @@ export function DiscoverPage() {
       </header>
       <main className="discover-main">
         <section className="discover-preferences">
-          <form className="discover-form" onSubmit={handleSubmit}>
+          <form className="discover-form" onSubmit={handleFindSpot}>
             <div className="discover-section">
               <h2 className="discover-section-title">How do you want to study?</h2>
               <div className="discover-pill-group">
@@ -158,15 +122,15 @@ export function DiscoverPage() {
 
                 <input
                   type="radio"
-                  id="noise-quiet"
+                  id="noise-busy"
                   name="noise"
-                  value="quiet"
+                  value="busy"
                   className="discover-pill-input"
-                  checked={form.noise === "quiet"}
+                  checked={form.noise === "busy"}
                   onChange={handleChange}
                 />
-                <label htmlFor="noise-quiet" className="discover-pill-label">
-                  Quiet
+                <label htmlFor="noise-busy" className="discover-pill-label">
+                  Busy
                 </label>
 
                 <input
@@ -235,90 +199,46 @@ export function DiscoverPage() {
             </div>
 
             <div className="discover-actions">
-              <button type="submit" className="primary-button">
-                Find me a spot
-              </button>
-              <button
-                type="button"
-                className="primary-outline-button discover-ai-btn"
-                onClick={handleAISuggestions}
-                disabled={aiLoading}
-              >
-                {aiLoading ? "Asking AI..." : "Get AI suggestions"}
+              <button type="submit" className="primary-button" disabled={loading}>
+                {loading ? "Finding your spot…" : "Find me a spot"}
               </button>
             </div>
           </form>
         </section>
 
         <section className="discover-results">
-          {aiSuggestions.length > 0 && (
-            <div ref={aiResultsRef} className="discover-ai-section discover-ai-section-first">
-              <h2 className="discover-results-title">AI recommendations</h2>
+          {results.length > 0 ? (
+            <div ref={resultsRef} className="discover-ai-section discover-ai-section-first">
+              <h2 className="discover-results-title">Your spots</h2>
               <ul className="discover-result-list">
-                {aiSuggestions.map((item, idx) => (
-                  <li key={idx} className="discover-result-card ai-card">
-                    <div className="discover-result-header">
-                      <div className="discover-result-title">
-                        <div className="discover-room-name">{item.space}</div>
-                        <div className="discover-library-name">{item.library}</div>
-                      </div>
-                    </div>
-                    <p className="discover-reason">{item.reason}</p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {aiError && <p className="discover-ai-error">{aiError}</p>}
-          {recommendations.length ? (
-            <>
-              <h2 className="discover-results-title">Top matches right now</h2>
-              <ul className="discover-result-list">
-                {recommendations.map((rec) => {
-                  const spaceKey = rec.space.libraryId ? `${rec.space.libraryId}:${rec.space.id}` : rec.space.id;
-                  const summary = ratingSummaryBySpace.get(spaceKey) || { avg: null, last: null };
-                  const avg = summary.avg;
-                  const last = summary.last;
-                  const library = libraries.find((l) => l.id === rec.space.libraryId);
+                {results.map((item, idx) => {
+                  const lib = libraries.find((l) => l.name === item.library);
                   return (
-                    <li key={rec.space.id} className="discover-result-card">
-                      <Link to={`/libraries/${rec.space.libraryId}`} className="discover-result-link">
-                      <div className="discover-result-header">
-                        <div className="discover-result-title">
-                          <div className="discover-room-name">{rec.space.name}</div>
-                          <div className="discover-library-name">{library?.name}</div>
-                        </div>
-                        {avg ? (
-                          <div className="rating-badge">
-                            <span className="rating-label">Avg:</span>
-                            <span className="rating-value">{avg}/5</span>
+                    <li key={idx} className="discover-result-card ai-card">
+                      <Link to={lib ? `/libraries/${lib.id}` : "#"} className="discover-result-link">
+                        <div className="discover-result-header">
+                          <div className="discover-result-title">
+                            <div className="discover-room-name">{item.space}</div>
+                            <div className="discover-library-name">{item.library}</div>
                           </div>
-                        ) : (
-                          <div className="rating-badge no-rating">
-                            <div className="rating-text-group">
-                              <span className="rating-label">No recent ratings</span>
-                              <span className="rating-hint">
-                                Be the first to rate this room from Lock In
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      <p className="discover-reason">{rec.reason}</p>
-                      {last && (
-                        <div className="rating-timestamp">
-                          Updated {new Date(last.createdAt).toLocaleTimeString()}
                         </div>
-                      )}
+                        <p className="discover-reason">{item.reason}</p>
                       </Link>
                     </li>
                   );
                 })}
               </ul>
-            </>
-          ) : (
+            </div>
+          ) : null}
+          {error && <p className="discover-ai-error">{error}</p>}
+          {loading && (
             <div className="discover-empty">
-              <p>Tell us how you like to study and we’ll surface spaces that fit your vibe.</p>
+              <p>Finding your spot…</p>
+            </div>
+          )}
+          {results.length === 0 && !loading && (
+            <div className="discover-empty">
+              <p>Set your preferences and click "Find me a spot" for personalized recommendations.</p>
             </div>
           )}
         </section>
